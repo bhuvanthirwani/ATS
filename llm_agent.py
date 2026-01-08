@@ -123,11 +123,18 @@ class LLMAgent:
         base_url = resource.get("base_url", "https://api.openai.com/v1")
         api_key = resource.get("api_key")
         
+        # OpenRouter specific headers
+        default_headers = {
+            "HTTP-Referer": "https://github.com/bhuvanthirwani/ATS",
+            "X-Title": "ATS Resume Tailoring System"
+        }
+        
         return ChatOpenAI(
             model=default_model,
             temperature=0.5,
             base_url=base_url,
             api_key=api_key,
+            default_headers=default_headers if "openrouter.ai" in base_url else None
         )
 
     # BUILDING CHAIN STRUCTURE [ PROMPT (system+user) | LLM (GROQ OBJECT) | PARSER (STRUCTURED OUTPUT) ]
@@ -219,6 +226,85 @@ class LLMAgent:
             "job_description": job_description
         })
 
+    def get_followup_answers(self, optimized_resume: str, job_description: str):
+        """Generates answers for 'Best Fit' and 'Why work here' based on the CV."""
+        system_prompt = """
+        You are a professional interview coach. 
+        Based on the provided optimized Resume and Job Description, provide persuasive and authentic answers to two critical interview questions.
+        
+        Question 1: Why am I the best fit for this position?
+        Question 2: Why do you want to work for this organization?
+        
+        Rules:
+        1. Use the candidate's achievements and skills from the optimized resume.
+        2. Align with the company's needs described in the job description.
+        3. Be concise (max 3-4 sentences per answer).
+        4. Return the answers as a JSON-like object with keys {{ "best_fit": "...", "why_organization": "..." }}.
+        """
+        
+        user_prompt = """
+        Job Description: {job_description}
+        Optimized Resume: {optimized_resume}
+        """
+        
+        prompt = ChatPromptTemplate.from_messages([
+            ("system", system_prompt),
+            ("user", user_prompt)
+        ])
+        
+        # Use simple string parser and then handle potentially as json
+        chain = prompt | self.llm | StrOutputParser()
+        response = chain.invoke({
+            "job_description": job_description,
+            "optimized_resume": optimized_resume
+        })
+        
+        try:
+            # Attempt to strip md if it's there and parse
+            cleaned_response = response.strip().replace('```json', '').replace('```', '')
+            return json.loads(cleaned_response)
+        except:
+            return response # Fallback to raw text if parsing fails
+
+    def get_optimization_summary(self, optimized_resume: str, job_description: str):
+        """Generates a brief summary of changes made and keywords added."""
+        system_prompt = """
+        You are a resume expert. 
+        Compare an optimized resume with a job description and identify:
+        1. 3-4 key changes made to the content (be brief, e.g., 'Enhanced quantified achievements in Experience').
+        2. Where these changes were primarily made (e.g., 'Professional Experience section').
+        3. 5-7 key industry keywords that were integrated into the resume to match the job.
+        
+        Return the result as a JSON-like object with keys:
+        {{
+          "changes": ["brief change 1", "brief change 2", ...],
+          "location": "where changes happened",
+          "keywords": ["keyword1", "keyword2", ...]
+        }}
+        """
+        
+        user_prompt = """
+        Job Description: {job_description}
+        Optimized Resume: {optimized_resume}
+        """
+        
+        prompt = ChatPromptTemplate.from_messages([
+            ("system", system_prompt),
+            ("user", user_prompt)
+        ])
+        
+        chain = prompt | self.llm | StrOutputParser()
+        response = chain.invoke({
+            "job_description": job_description,
+            "optimized_resume": optimized_resume
+        })
+        
+        try:
+            cleaned_response = response.strip().replace('```json', '').replace('```', '')
+            return json.loads(cleaned_response)
+        except:
+            return response
+
 # -----------------------
 # AGENT CLASS FOR CHATBOT
 # -----------------------
@@ -248,11 +334,18 @@ class LLM_Chat:
         base_url = resource.get("base_url", "https://api.openai.com/v1")
         api_key = resource.get("api_key")
 
+        # OpenRouter specific headers
+        default_headers = {
+            "HTTP-Referer": "https://github.com/bhuvanthirwani/ATS",
+            "X-Title": "ATS Resume Tailoring System"
+        }
+
         return ChatOpenAI(
             model=default_model,
             temperature=0.5,
             base_url=base_url,
             api_key=api_key,
+            default_headers=default_headers if "openrouter.ai" in base_url else None
         )
 
     def get_chat_answer(self, final_text_prompt: list) -> list:
