@@ -1,0 +1,26 @@
+{
+    "resources": [
+        {
+            "enterprise": "openai",
+            "model": "kwaipilot/kat-coder-pro:free",
+            "base_url": "https://openrouter.ai/api/v1",
+            "api_key": "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"
+        }
+    ],
+    "default_enterprise": "openai",
+    "default_model": "kwaipilot/kat-coder-pro:free",
+    "database": {
+        "db_type": "postgresdb",
+        "host": "aws-0-us-west-2.pooler.supabase.com",
+        "port": 6543,
+        "database": "postgres",
+        "user": "postgres.vsopxksmpxchsyvyifcg",
+        "password": "Bhuvan@303#",
+        "schema": "public",
+        "table_names": {
+            "users": "ats_users",
+            "jobs": "ats_data"
+        },
+        "latex_compiler": "C:\\Program Files\\MiKTeX\\miktex\\bin\\x64\\pdflatex.exe"
+    }
+}

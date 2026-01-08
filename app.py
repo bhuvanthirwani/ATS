@@ -2,17 +2,16 @@ import streamlit as st
 import os, time, pathlib
 import pandas as pd
 from jinja2 import Environment, FileSystemLoader
-import weasyprint
+# weasyprint removed in favor of LaTeX
 
 # INTERNAL LIBRARIES
 from file_management import *
 from state_machine import ResumeOptimizerStateMachine
 from llm_agent import *
+import json
+import subprocess
 
-# Add the path to the GTK3 bin folder -> required to run weasyprint
-# Starting from Python 3.8, Windows does not automatically resolve dependencies
-# in certain directories unless they are explicitly added to the search path.
-os.add_dll_directory(r"C:\Program Files\GTK3-Runtime Win64\bin")
+# GTK3 bin folder (weasyprint dependency) removed
 
 # Initializing the state machine
 if "machine" not in st.session_state:
@@ -23,14 +22,14 @@ st.title("ATS TAILORING SYSTEM (LLM)")
 machine = st.session_state.machine
 
 # Create output directory if not exists
-output_path = pathlib.Path("output")
+project_root = pathlib.Path(__file__).parent.absolute()
+output_path = project_root / "output"
 output_path.mkdir(exist_ok=True)
 (output_path/".gitkeep").touch(exist_ok=True)
 
 # --- GLOBAL VARIABLES USED FOR PDF GENERATION ----------
-
-output_dir =  r'C:\Users\Leonardo\PycharmProjects\ATS_TAILORING\output'          # That's where the generated PDFs are kept
-template_dir = r'C:\Users\Leonardo\PycharmProjects\ATS_TAILORING\templates'
+output_dir = str(output_path)
+template_dir = str(project_root / "templates")
 # SETTING UP JINJA2 ENVIRONMENT
 env = Environment(loader=FileSystemLoader(template_dir))
 template = env.get_template('cv_template.html')                                  # Custom-made HTML template for the generated PDF Resume
@@ -50,6 +49,10 @@ if "resume_text" not in st.session_state:
     st.session_state.resume_text = ""
 if "linkedin_text" not in st.session_state:
     st.session_state.linkedin_text = ""
+if "selected_template_path" not in st.session_state:
+    st.session_state.selected_template_path = None
+if "selected_linkedin_path" not in st.session_state:
+    st.session_state.selected_linkedin_path = None
 if "generated_cv" not in st.session_state:
     st.session_state.generated_cv = None
 
@@ -69,8 +72,13 @@ Take the following information as reference for the candidate and opportunity.
 {job_description}
 """
 
-# --- GROQ API KEY PATH IN LOCAL ENVIRONMENT -------------------------------
-API_KEY_PATH = r'C:\Users\Leonardo\PycharmProjects\ATS_TAILORING\API_KEY.txt'
+# --- CONFIGURATION PATH -------------------------------
+CONFIG_PATH = os.path.join('configs', 'staging.json')
+with open(CONFIG_PATH, 'r') as f:
+    config = json.load(f)
+
+# Initialize Database
+init_db(config)
 
 # ------------------------------------
 # APP FUNCTIONS TO IMPROVE READABILITY
@@ -176,24 +184,38 @@ if machine.state == "start":
 
         else:
 
-            st.info(f"User '{user_name}' selected. Please, input your updated Resume PDF and Linkedin Export PDF to create your profile.")
+            st.info(f"User '{user_name}' selected. Please select your base template and LinkedIn profile.")
 
-            # Resume PDF
-            resume_pdf = st.file_uploader("Resume PDF", type=["pdf"])
+            # LinkedIn Profiles Directory
+            linkedin_profiles_dir = os.path.join(project_root, "linkedin_profiles")
+            if not os.path.exists(linkedin_profiles_dir):
+                os.makedirs(linkedin_profiles_dir)
+            
+            all_linkedin_pdfs = [f for f in os.listdir(linkedin_profiles_dir) if f.endswith('.pdf')]
+            all_templates = [f for f in os.listdir(template_dir) if f.endswith(('.txt', '.tex'))]
 
-            # Linkedin PDF
-            linkedin_pdf = st.file_uploader("Linkedin Default PDF Export", type=["pdf"])
+            col1, col2 = st.columns(2)
+            with col1:
+                selected_template = st.selectbox("Base LaTeX Template", all_templates)
+            with col2:
+                selected_linkedin = st.selectbox("LinkedIn Profile (PDF)", all_linkedin_pdfs)
 
-            if resume_pdf and linkedin_pdf and user_name is not None:
-                if st.button("📤 Upload & Continue", type="primary"):
+            if selected_template and selected_linkedin and user_name:
+                if st.button("🚀 Create Profile & Continue", type="primary"):
                     try:
-                        st.session_state.resume_text = extract_text_from_pdf(resume_pdf)
-                        st.session_state.linkedin_text = extract_text_from_pdf(linkedin_pdf)
-                        create_user(user_name, resume_pdf, linkedin_pdf)
+                        template_path = os.path.join(template_dir, selected_template)
+                        linkedin_path = os.path.join(linkedin_profiles_dir, selected_linkedin)
+                        
+                        st.session_state.resume_text = extract_text_from_file(template_path)
+                        st.session_state.linkedin_text = extract_text_from_file(linkedin_path)
+                        st.session_state.selected_template_path = template_path
+                        st.session_state.selected_linkedin_path = linkedin_path
+                        
+                        create_user(user_name, template_path, linkedin_path)
                         st.session_state.user_name = user_name
                         message = machine.next("select_user")
                         st.success(message)
-                        st.rerun()  # Refresh to show next state
+                        st.rerun()
                     except Exception as e:
                         st.error(f"Error creating user: {e}")
 
@@ -231,9 +253,30 @@ elif machine.state == "waiting_job_description":
         selected_job = next(job for job in user_jobs if job[0] == selected_id)
         st.session_state.job_id = selected_id
         st.session_state.selected_job_text = selected_job[1]
-        message = machine.next("job_description_uploaded")
-        st.success(f"Selected Job {selected_id}. {message}")
-        st.rerun()
+        
+    st.divider()
+    
+    # Template Selection (Optional reuse/change)
+    st.subheader("Final Template Selection:")
+    all_templates = [f for f in os.listdir(template_dir) if f.endswith(('.html', '.txt', '.tex'))]
+    
+    # Default to the template selected at user creation if available
+    default_index = 0
+    if st.session_state.selected_template_path:
+        template_name = os.path.basename(st.session_state.selected_template_path)
+        if template_name in all_templates:
+            default_index = all_templates.index(template_name)
+            
+    selected_template_file = st.selectbox("Choose a template for output:", all_templates, index=default_index)
+    st.session_state.selected_template = selected_template_file
+
+    if st.button("🚀 Start Optimization", type="primary"):
+        if st.session_state.job_id and st.session_state.selected_template:
+            message = machine.next("job_description_uploaded")
+            st.success(f"Processing with template: {selected_template_file}. {message}")
+            st.rerun()
+        else:
+            st.error("Please select both a job and a template.")
 
 # Step 3: Process the input with the LLM to generate a tailored resume and render it as a PDF
 elif machine.state == "processing_llm":
@@ -244,27 +287,68 @@ elif machine.state == "processing_llm":
         show_loading_state()
 
         try:
-            llm_agent = LLMAgent(API_KEY_PATH)
-            result = llm_agent.generate_cv(
-                st.session_state.user_name,
-                st.session_state.resume_text,
-                st.session_state.linkedin_text,
-                st.session_state.selected_job_text
-            )
+            llm_agent = LLMAgent(config)
+            
+            template_path = os.path.join(template_dir, st.session_state.selected_template)
+            is_latex = st.session_state.selected_template.endswith(('.txt', '.tex'))
 
-            st.session_state.generated_cv = result
-            save_dict_in_db(st.session_state.user_name, st.session_state.job_id, json.dumps(result))
+            if not is_latex:
+                # HTML Workflow
+                result = llm_agent.generate_cv(
+                    st.session_state.user_name,
+                    st.session_state.resume_text,
+                    st.session_state.linkedin_text,
+                    st.session_state.selected_job_text
+                )
+                st.session_state.generated_cv = result
+                save_dict_in_db(st.session_state.user_name, st.session_state.job_id, json.dumps(result))
 
-            # PDF GENERATION PROCESS ----------------------------------------
-            # RENDERING HTML
-            rendered_html = template.render(st.session_state.generated_cv)
-            # Saving HTML
-            output_html_path = os.path.join(output_dir, 'output_cv.html')
-            with open(output_html_path, 'w', encoding='utf-8') as f:
-                f.write(rendered_html)
-            # Generating the PDF - WEASY PRINT
-            output_pdf_path = os.path.join(output_dir, f'Resume_{st.session_state.user_name}_{st.session_state.job_id}.PDF')
-            weasyprint.HTML(string=rendered_html).write_pdf(output_pdf_path)
+                # PDF GENERATION PROCESS - HTML
+                rendered_html = template.render(st.session_state.generated_cv)
+                output_html_path = os.path.join(output_dir, 'output_cv.html')
+                with open(output_html_path, 'w', encoding='utf-8') as f:
+                    f.write(rendered_html)
+                output_pdf_path = os.path.join(output_dir, f'Resume_{st.session_state.user_name}_{st.session_state.job_id}.PDF')
+                st.warning("HTML to PDF conversion (WeasyPrint) has been disabled. Please use LaTeX templates for PDF generation.")
+                # weasyprint.HTML(string=rendered_html).write_pdf(output_pdf_path)
+            else:
+                # LaTeX Workflow
+                with open(template_path, 'r', encoding='utf-8') as f:
+                    latex_template = f.read()
+                
+                optimized_latex = llm_agent.optimize_latex(
+                    latex_template,
+                    st.session_state.resume_text,
+                    st.session_state.linkedin_text,
+                    st.session_state.selected_job_text
+                )
+                
+                # Cleaning up potential MD blocks if LLM still includes them
+                if optimized_latex.startswith("```"):
+                    optimized_latex = optimized_latex.split("\n", 1)[1].rsplit("\n", 1)[0]
+                
+                base_name = f'Resume_{st.session_state.user_name}_{st.session_state.job_id}'
+                output_tex_path = os.path.join(output_dir, f'{base_name}.tex')
+                
+                with open(output_tex_path, 'w', encoding='utf-8') as f:
+                    f.write(optimized_latex)
+                
+                # Compile LaTeX to PDF
+                latex_compiler = config.get("database", {}).get("latex_compiler", "pdflatex")
+                with st.spinner("Compiling LaTeX... This might take a moment."):
+                    try:
+                        result = subprocess.run(
+                            [latex_compiler, "-interaction=nonstopmode", f"{base_name}.tex"],
+                            cwd=output_dir,
+                            capture_output=True,
+                            text=True,
+                            shell=True
+                        )
+                        if result.returncode != 0:
+                            st.warning(f"LaTeX compilation warning (check log): {result.stderr}")
+                    except Exception as e:
+                        st.error(f"Failed to run pdflatex: {e}")
+                        raise e
 
             message = machine.next("finished")
             st.success(message)
@@ -306,7 +390,7 @@ elif machine.state == "job_exploration":
     st.divider()
 
     # 2. Chat with LLM based on the optimized resume
-    st.subheader("💬 Chat with llama-3.3-70b-versatile")
+    st.subheader(f"💬 Chat with {config.get('default_model', 'gpt-4o')}")
 
     # Initialize or load chat history
     if "chat_history" not in st.session_state:
@@ -330,7 +414,7 @@ elif machine.state == "job_exploration":
             ]
 
     # Initialize the LLM Chat Agent
-    llm_chat_agent = LLM_Chat(API_KEY_PATH)
+    llm_chat_agent = LLM_Chat(config)
 
     # Display chat messages (skip system prompt in display)
     for message in st.session_state.chat_history:

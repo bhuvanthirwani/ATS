@@ -1,8 +1,9 @@
-from pydantic import BaseModel, Field, EmailStr, HttpUrl
+from pydantic import BaseModel, Field, HttpUrl
 from langchain_core.output_parsers import JsonOutputParser, StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_groq import ChatGroq
+from langchain_openai import ChatOpenAI
 from typing import List, Optional
+import os, json
 
 # -----------------------
 # Pydantic Models
@@ -78,7 +79,7 @@ class Volunteering(BaseModel):
 # COMPLETE OUTPUT STRUCTURE CLASS
 class StructuredOutput(BaseModel):
     name: str = Field(description= "Full name")
-    email: EmailStr = Field(description= "Email address")
+    email: str = Field(description= "Email address")
     phone: str = Field(description="Phone number in the format +XX XXXXX XXXX")
     linkedin: Optional[HttpUrl] = Field(None, description="LinkedIn profile URL")
     github: Optional[HttpUrl] = Field(None, description="GitHub profile URL")
@@ -96,17 +97,37 @@ class StructuredOutput(BaseModel):
 # ------------------------------------
 
 class LLMAgent:
-    def __init__(self, api_key_path: str):
-        self.API_KEY = open(api_key_path).read()
+    def __init__(self, config: dict):
+        self.config = config
         self.llm = self._initialize_llm()
         self.parser = JsonOutputParser(pydantic_object=StructuredOutput)  # Uses your existing StructuredOutput
         self.chain = self._build_chain()
 
     def _initialize_llm(self):
-        return ChatGroq(
-            model="llama-3.3-70b-versatile",
+        # Use default enterprise and model from config
+        default_enterprise = self.config.get("default_enterprise", "openai")
+        default_model = self.config.get("default_model", "gpt-4o")
+        
+        # Priority 1: Match BOTH enterprise and model
+        # Priority 2: Match just enterprise
+        # Priority 3: Fallback to first resource
+        resources = self.config.get("resources", [])
+        resource = next(
+            (r for r in resources if r.get("enterprise") == default_enterprise and r.get("model") == default_model),
+            next(
+                (r for r in resources if r.get("enterprise") == default_enterprise),
+                resources[0] if resources else {}
+            )
+        )
+        
+        base_url = resource.get("base_url", "https://api.openai.com/v1")
+        api_key = resource.get("api_key")
+        
+        return ChatOpenAI(
+            model=default_model,
             temperature=0.5,
-            api_key=self.API_KEY
+            base_url=base_url,
+            api_key=api_key,
         )
 
     # BUILDING CHAIN STRUCTURE [ PROMPT (system+user) | LLM (GROQ OBJECT) | PARSER (STRUCTURED OUTPUT) ]
@@ -146,6 +167,50 @@ class LLMAgent:
         {job_description}
         """
 
+    def optimize_latex(self, latex_template: str, resume_text: str, linkedin_text: str, job_description: str):
+        system_prompt = """
+        You are a professional career assistant and LaTeX expert.
+        I will provide a LaTeX template and information from a Resume and LinkedIn Export.
+        Your task is to take the provided LaTeX template and rewrite it COMPLETELY to be optimized for the provided Job Description.
+        
+        Rules:
+        1. Keep the EXACT LaTeX structure and packages from the template.
+        2. Replace all the content (Experience, Projects, Skills) with optimized versions based on the Resume/LinkedIn data and the Job Description.
+        3. Do NOT use placeholders. Fill in all information.
+        4. Return ONLY the raw LaTeX code. Do not include any markdown formatting like ```latex ... ```.
+        5. Ensure the LaTeX code is valid and compiles without errors.
+        6. Do not invent information; only use what is provided in the documents.
+        
+        --- Resume Export ---
+        {resume_text}
+        
+        --- LinkedIn Export ---
+        {linkedin_text}
+        """
+        
+        user_prompt = """
+        Optimize this LaTeX template for the following Job Description:
+        
+        --- JOB DESCRIPTION ---
+        {job_description}
+        
+        --- LATEX TEMPLATE ---
+        {latex_template}
+        """
+        
+        prompt = ChatPromptTemplate.from_messages([
+            ("system", system_prompt),
+            ("user", user_prompt)
+        ])
+        
+        chain = prompt | self.llm | StrOutputParser()
+        return chain.invoke({
+            "resume_text": resume_text,
+            "linkedin_text": linkedin_text,
+            "job_description": job_description,
+            "latex_template": latex_template
+        })
+
     def generate_cv(self, user_name: str, resume_text: str, linkedin_text: str, job_description: str):
         return self.chain.invoke({
             "user": user_name,
@@ -159,15 +224,35 @@ class LLMAgent:
 # -----------------------
 
 class LLM_Chat:
-    def __init__(self, API_KEY_PATH):
-        self.API_KEY = open(API_KEY_PATH).read()
+    def __init__(self, config: dict):
+        self.config = config
         self.llm = self._initialize_llm()
 
     def _initialize_llm(self):
-        return ChatGroq(
-            model="llama-3.3-70b-versatile",
+        # Use default enterprise and model from config
+        default_enterprise = self.config.get("default_enterprise", "openai")
+        default_model = self.config.get("default_model", "gpt-4o")
+
+        # Priority 1: Match BOTH enterprise and model
+        # Priority 2: Match just enterprise
+        # Priority 3: Fallback to first resource
+        resources = self.config.get("resources", [])
+        resource = next(
+            (r for r in resources if r.get("enterprise") == default_enterprise and r.get("model") == default_model),
+            next(
+                (r for r in resources if r.get("enterprise") == default_enterprise),
+                resources[0] if resources else {}
+            )
+        )
+        
+        base_url = resource.get("base_url", "https://api.openai.com/v1")
+        api_key = resource.get("api_key")
+
+        return ChatOpenAI(
+            model=default_model,
             temperature=0.5,
-            api_key=self.API_KEY
+            base_url=base_url,
+            api_key=api_key,
         )
 
     def get_chat_answer(self, final_text_prompt: list) -> list:
