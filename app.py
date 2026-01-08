@@ -166,9 +166,14 @@ for key, val in states_to_init.items():
 if "show_log" not in st.session_state:
     st.session_state.show_log = False
 
-@st.dialog("📋 System Activity Log")
+@st.dialog("📋 Technical Activity Log", width="large")
 def show_log_dialog():
-    st.code("\n".join(st.session_state.logger.logs[::-1]), language="text")
+    @st.fragment(run_every=3)
+    def log_viewer():
+        st.markdown(f"**Live Sync Active** (Last Update: {time.strftime('%H:%M:%S')})")
+        st.code("\n".join(st.session_state.logger.logs[::-1]), language="text")
+    
+    log_viewer()
 
 # Sidebar for auxiliary controls
 with st.sidebar:

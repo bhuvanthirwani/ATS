@@ -183,10 +183,14 @@ class LLMAgent:
         Rules:
         1. Keep the EXACT LaTeX structure and packages from the template.
         2. Replace all the content (Experience, Projects, Skills) with optimized versions based on the Resume/LinkedIn data and the Job Description.
-        3. Do NOT use placeholders. Fill in all information.
-        4. Return ONLY the raw LaTeX code. Do not include any markdown formatting like ```latex ... ```.
-        5. Ensure the LaTeX code is valid and compiles without errors.
-        6. Do not invent information; only use what is provided in the documents.
+        3. DO NOT add extra sections that are not in the template.
+        4. DO NOT remove any existing skills present in the Resume export; always preserve them.
+        5. DO NOT change the headings of the Technical Skills sub-sections (e.g., keep "Programming Languages" as is).
+        6. DO NOT change the heading of the Tech/Technical section.
+        7. Do NOT use placeholders. Fill in all information.
+        8. Return ONLY the raw LaTeX code. Do not include any markdown formatting like ```latex ... ```.
+        9. Ensure the LaTeX code is valid and compiles without errors.
+        10. Do not invent information; only use what is provided in the documents.
         
         --- Resume Export ---
         {resume_text}
