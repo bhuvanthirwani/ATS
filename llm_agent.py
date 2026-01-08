@@ -218,6 +218,43 @@ class LLMAgent:
             "latex_template": latex_template
         })
 
+    def get_ats_score(self, resume_text: str, job_description: str):
+        """Calculates an ATS score (0-100) based on the Job Description."""
+        system_prompt = """
+        You are an ATS (Applicant Tracking System) expert. 
+        Evaluate the provided Resume against the Job Description and provide:
+        1. A score from 0 to 100 based on keyword match, skill alignment, and experience relevance.
+        2. A brief 1-sentence justification for the score.
+        
+        Return the result as a JSON object with keys {{ "score": 85, "justification": "..." }}.
+        """
+        
+        user_prompt = """
+        Resume: {resume_text}
+        Job Description: {job_description}
+        """
+        
+        prompt = ChatPromptTemplate.from_messages([
+            ("system", system_prompt),
+            ("user", user_prompt)
+        ])
+        
+        chain = prompt | self.llm | StrOutputParser()
+        response = chain.invoke({
+            "resume_text": resume_text,
+            "job_description": job_description
+        })
+        
+        try:
+            cleaned_response = response.strip().replace('```json', '').replace('```', '')
+            return json.loads(cleaned_response)
+        except:
+            # Fallback parser for numeric score if JSON fails
+            import re
+            match = re.search(r'"score":\s*(\d+)', response)
+            score = int(match.group(1)) if match else 50
+            return {"score": score, "justification": "Score calculated via fallback parser."}
+
     def generate_cv(self, user_name: str, resume_text: str, linkedin_text: str, job_description: str):
         return self.chain.invoke({
             "user": user_name,
