@@ -1,12 +1,21 @@
 import streamlit as st
+import time
+import os
+import pathlib
+import json
+import uuid
+from file_management import FileManager, extract_text_from_file
+from state_machine import ResumeOptimizerStateMachine
+from llm_agent import LLMAgent, LLM_Chat
 
+# --- PAGE CONFIG -------------------------------------
 st.set_page_config(
     page_title="ATS Resume Tailoring System",
     page_icon="📄",
     layout="wide"
 )
 
-# Premium UI Styling
+# --- GLOBAL STYLES -----------------------------------
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600&display=swap');
@@ -17,9 +26,7 @@ st.markdown("""
         color: #f8fafc;
     }
     
-    .main {
-        background: transparent;
-    }
+    .main { background: transparent; }
     
     [data-testid="stHeader"] {
         background: rgba(15, 23, 42, 0.8);
@@ -34,7 +41,7 @@ st.markdown("""
         padding: 0.6rem 1.5rem !important;
         font-weight: 600 !important;
         transition: all 0.3s ease !important;
-        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06) !important;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
         width: 100%;
     }
     
@@ -53,13 +60,6 @@ st.markdown("""
         box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
     }
     
-    [data-testid="stMetricValue"] {
-        font-size: 2.5rem !important;
-        background: linear-gradient(90deg, #3b82f6, #60a5fa);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-    }
-
     /* Animation */
     @keyframes fadeIn {
         from { opacity: 0; transform: translateY(10px); }
@@ -68,19 +68,71 @@ st.markdown("""
     .fade-in {
         animation: fadeIn 0.8s ease-out;
     }
+    
+    /* Native Container Styling to replace glass-card */
+    [data-testid="stVerticalBlockBorderWrapper"] {
+        background: rgba(30, 41, 59, 0.4);
+        backdrop-filter: blur(12px);
+        border: 1px solid rgba(255, 255, 255, 0.05);
+        border-radius: 20px;
+        padding: 1rem;
+        box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+    }
 </style>
 """, unsafe_allow_html=True)
 
-import os, time, pathlib, json
-import pandas as pd
-from jinja2 import Environment, FileSystemLoader
-# weasyprint removed in favor of LaTeX
+# --- DIALOGS -----------------------------------------
+@st.dialog("➕ Add New Model")
+def add_model_dialog(catalog, inventory, user_config):
+    with st.form("add_model_form"):
+        catalog_opts = {c['id']: f"{c['display_name']} ({c['provider']})" for c in catalog}
+        chosen_sdk_id = st.selectbox("Choose Base Model", options=catalog_opts.keys(), format_func=lambda x: catalog_opts[x])
+        
+        chosen_cat_item = next((c for c in catalog if c['id'] == chosen_sdk_id), {})
+        
+        c1, c2 = st.columns(2)
+        with c1:
+            new_name = st.text_input("Friendly Name", value=chosen_cat_item.get('display_name', ''))
+        with c2:
+            plan_type = st.selectbox("Plan Type", ["free", "paid"])
+        
+        api_key_input = st.text_input("API Key (Required for all plans)", type="password")
+        
+        if st.form_submit_button("Save Model"):
+            duplicate = any(item['name'].lower() == new_name.lower().strip() for item in inventory)
+            
+            if not new_name.strip():
+                st.error("Please provide a name.")
+            elif duplicate:
+                st.error(f"Name '{new_name}' already exists.")
+            elif not api_key_input.strip():
+                st.error("API Key is required.")
+            else:
+                new_item = {
+                    "id": str(uuid.uuid4()),
+                    "sdk_id": chosen_sdk_id,
+                    "plan_type": plan_type,
+                    "name": new_name.strip(),
+                    "api_key": api_key_input.strip(),
+                    "tokens_used_today": 0,
+                    "last_used_at": None
+                }
+                inventory.append(new_item)
+                user_config['llm_inventory'] = inventory
+                if len(inventory) == 1:
+                    user_config['selected_llm_id'] = new_item['id']
+                
+                fm.save_user_config(st.session_state.user_id, user_config)
+                st.success(f"Added {new_name}!")
+                time.sleep(1)
+                st.rerun()
 
-# INTERNAL LIBRARIES
-from file_management import *
-from state_machine import ResumeOptimizerStateMachine
-from llm_agent import *
-import subprocess
+# --- INITIALIZATION ----------------------------------
+project_root = pathlib.Path(__file__).parent.absolute()
+fm = FileManager(project_root)
+
+if "user_id" not in st.session_state:
+    st.session_state.user_id = None
 
 # --- LOGGER CLASS ------------------------------------
 class AppLogger:
@@ -92,7 +144,6 @@ class AppLogger:
         timestamp = time.strftime("%H:%M:%S")
         formatted_message = f"[{timestamp}] {message}"
         self.logs.append(formatted_message)
-        # Display logs only if placeholder is available
         if self.placeholder:
             self.placeholder.code("\n".join(self.logs[::-1]), language="text")
 
@@ -101,424 +152,479 @@ class AppLogger:
         if self.placeholder:
             self.placeholder.empty()
 
-# Add the path to the GTK3 bin folder removed
-
-# --- AGENT & STATE INITIALIZATION ---------------------
 if "logger" not in st.session_state:
     st.session_state.logger = AppLogger()
 
+# --- LOGIN SCREEN ------------------------------------
+if not st.session_state.user_id:
+    
+    st.markdown("<br><br><br>", unsafe_allow_html=True)
+    with st.container(border=True):
+        st.title("🔐 ATS Access Portal")
+        st.markdown("Enter your User ID to load your workspace.")
+        
+        uid_input = st.text_input("User ID", placeholder="e.g. jdoe")
+        
+        if st.button("🚀 Enter Workspace"):
+            if uid_input.strip():
+                st.session_state.user_id = uid_input.strip()
+                fm.ensure_user_structure(st.session_state.user_id)
+                st.success(f"Welcome, {st.session_state.user_id}!")
+                st.rerun()
+            else:
+                st.error("Please enter a User ID.")
+    st.stop()
+
+# --- MAIN APP LOGIC ----------------------------------
+
+# Helper: Get current user config
+user_config = fm.get_user_config(st.session_state.user_id)
+user_dir = fm.get_user_dir(st.session_state.user_id)
+
+# Initialize State Machine if new session
 if "machine" not in st.session_state:
     st.session_state.machine = ResumeOptimizerStateMachine()
 
 machine = st.session_state.machine
 
-# Paths and Directories
-project_root = pathlib.Path(__file__).parent.absolute()
-output_path = project_root / "output"
-output_path.mkdir(exist_ok=True)
-output_dir = str(output_path)
-template_dir = str(project_root / "templates")
-
-# Config Loading
-CONFIG_PATH = os.path.join('configs', 'staging.json')
-with open(CONFIG_PATH, 'r') as f:
-    config = json.load(f)
-
-# Initialize Database
-init_db(config)
-
-# Chat Model Prompt
-starting_chat_prompt_model = """You are a helpful assistant specialized in career assistance.Your goal is to provide clear,
-actionable, and practical advice to help users present themselves at their best,
-land interviews, and succeed in their career transitions.
-Take the following information as reference for the candidate and opportunity.
-
---- Candidate Resume ---
-{resume_text}
-
---- Linkedin Export ---
-{linkedin_text}
-
---- Job Description ---
-{job_description}
-"""
-
-# Session State defaults
-states_to_init = {
-    "user_name": "DefaultUser",
-    "job_id": None,
-    "opt_summary": None,
-    "resume_text": "",
-    "linkedin_text": "",
-    "selected_template_path": None,
-    "selected_linkedin_path": None,
-    "generated_cv": None,
-    "followup_answers": None,
-    "initial_ats_score": None,
-    "final_ats_score": None,
-    "chat_history": [],
-    "custom_resume_name": ""
-}
-for key, val in states_to_init.items():
-    if key not in st.session_state or st.session_state[key] is None:
-        st.session_state[key] = val
-
-# --- UI LAYOUT & MODERNIZATION -------------------------
-if "show_log" not in st.session_state:
-    st.session_state.show_log = False
-@st.dialog("📋 Technical Activity Log", width="large")
-def show_log_dialog():
-    @st.fragment(run_every=3)
-    def log_viewer():
-        st.markdown(f"**Live Sync Active** (Last Update: {time.strftime('%H:%M:%S')})")
-        st.code("\n".join(st.session_state.logger.logs[::-1]), language="text")
+# Sidebar Navigation
+with st.sidebar:
+    st.image("https://img.icons8.com/?size=100&id=12150&format=png&color=000000", width=80)
+    st.title(f"ATS Agent")
+    st.caption(f"User: {st.session_state.user_id}")
     
-    log_viewer()
-
-@st.dialog("📂 Manage LinkedIn Profiles", width="medium")
-def manage_profiles_dialog():
-    linkedin_profiles_dir = os.path.join(project_root, "linkedin_profiles")
-    all_pdfs = [f for f in os.listdir(linkedin_profiles_dir) if f.endswith('.pdf')]
-    
-    st.subheader("Upload New Profile")
-    uploaded_file = st.file_uploader("Choose a LinkedIn PDF", type="pdf")
-    if st.button("📤 Upload PDF"):
-        if uploaded_file:
-            with open(os.path.join(linkedin_profiles_dir, uploaded_file.name), "wb") as f:
-                f.write(uploaded_file.getbuffer())
-            st.success(f"Uploaded {uploaded_file.name}")
-            st.rerun()
+    page = st.radio("Navigation", ["Dashboard", "Profiles", "Settings", "History"], index=0)
     
     st.divider()
-    st.subheader("Delete Existing Profile")
-    if all_pdfs:
-        to_delete = st.selectbox("Select Profile to Delete", all_pdfs, key="del_profile")
-        if st.button("🗑️ Delete Profile", type="secondary"):
-            os.remove(os.path.join(linkedin_profiles_dir, to_delete))
-            st.warning(f"Deleted {to_delete}")
-            st.rerun()
-    else:
-        st.info("No profiles found.")
+    if st.button("🚪 Logout"):
+        st.session_state.user_id = None
+        st.session_state.machine = ResumeOptimizerStateMachine() # Reset machine
+        st.rerun()
 
-@st.dialog("📄 Manage LaTeX Templates", width="large")
-def manage_templates_dialog():
-    template_dir = os.path.join(project_root, "templates")
-    all_temps = [f for f in os.listdir(template_dir) if f.endswith(('.txt', '.tex'))]
+# --- PAGE: SETTINGS ----------------------------------
+if page == "Settings":
+    st.header("⚙️ Configuration")
     
-    tab1, tab2 = st.tabs(["✏️ Edit / Delete", "📤 Add New"])
+    tab1, tab2, tab3 = st.tabs(["🧠 AI Models", "📦 LLM Inventory", "📝 Prompts"])
     
+    # TAB 1: MODEL SELECTION
     with tab1:
-        if all_temps:
-            selected = st.selectbox("Select Template", all_temps, key="edit_temp_select")
-            file_path = os.path.join(template_dir, selected)
-            with open(file_path, "r", encoding="utf-8") as f:
-                content = f.read()
+        st.subheader("Select Active Model")
+        inventory = user_config.get("llm_inventory", [])
+        
+        if not inventory:
+            st.warning("No models found in inventory. Please add one in the 'LLM Inventory' tab.")
+        else:
+            # Selection Dropdown
+            options = {item['id']: f"{item.get('name', 'Unnamed')} ({item.get('plan_type', 'Unknown')})" for item in inventory}
+            current_selection = user_config.get("selected_llm_id")
             
-            new_content = st.text_area("Edit Template Content", value=content, height=400)
+            selected_id = st.selectbox(
+                "Choose Model for Optimization", 
+                options=options.keys(), 
+                format_func=lambda x: options[x],
+                index=list(options.keys()).index(current_selection) if current_selection in options else 0,
+                key="active_model_select"
+            )
             
-            c1, c2 = st.columns(2)
-            with c1:
-                if st.button("💾 Save Changes"):
-                    with open(file_path, "w", encoding="utf-8") as f:
-                        f.write(new_content)
-                    st.success("Template updated!")
-            with c2:
-                if st.button("🗑️ Delete Template", type="secondary"):
-                    os.remove(file_path)
-                    st.warning(f"Deleted {selected}")
+            if st.button("💾 Set as Active Model"):
+                user_config['selected_llm_id'] = selected_id
+                fm.save_user_config(st.session_state.user_id, user_config)
+                st.success("Active model updated!")
+
+    # TAB 2: INVENTORY MANAGEMENT
+    with tab2:
+        st.subheader("Manage Inventory")
+        
+        if st.button("➕ Add New Model"):
+            add_model_dialog(fm.get_global_catalog(), inventory, user_config)
+            
+        st.divider()
+        
+        if not inventory:
+            st.info("Inventory is empty.")
+        else:
+            for i, item in enumerate(inventory):
+                col1, col2, col3 = st.columns([3, 2, 1])
+                with col1:
+                    st.write(f"**{item.get('name')}**")
+                with col2:
+                     st.caption(f"{item.get('plan_type')} | {item.get('sdk_id')}")
+                with col3:
+                    if st.button("🗑️", key=f"del_model_{i}", help="Delete Model"):
+                        inventory.pop(i)
+                        user_config['llm_inventory'] = inventory
+                        if user_config.get('selected_llm_id') == item['id']:
+                            user_config['selected_llm_id'] = None
+                        fm.save_user_config(st.session_state.user_id, user_config)
+                        st.success(f"Deleted {item.get('name')}")
+                        time.sleep(1)
+                        st.rerun()
+                st.divider()
+
+    # TAB 3: PROMPT ENGINEERING
+    with tab3:
+        st.subheader("Customize System Prompts")
+        
+        prompts = user_config.get("prompts", {})
+        
+        # Define Known Prompt Keys with Defaults
+        DEFAULT_PROMPTS = {
+            "optimize_system": "You are a professional career assistant and LaTeX expert...",
+            "optimize_user": "Optimize this LaTeX template for the following Job Description...",
+            "chat_system": "You are a helpful assistant specialized in career assistance...",
+        }
+        
+        placeholders = ["{resume_text}", "{linkedin_text}", "{job_description}", "{latex_template}"]
+        
+        for key, default_val in DEFAULT_PROMPTS.items():
+            st.markdown(f"**{key.replace('_', ' ').title()}**")
+            
+            # Placeholder Buttons Row
+            cols = st.columns(len(placeholders))
+            for idx, ph in enumerate(placeholders):
+                if cols[idx].button(f"➕ {ph}", key=f"btn_{key}_{idx}"):
+                    prompts[key] = prompts.get(key, default_val) + " " + ph
+                    # No need to rerun, text area will pick up updated dict value if rerendered, 
+                    # strictly speaking we might need to rerun to refresh the text_area value if it uses value=...
+                    # Let's verify: Streamlit text_area with `value` doesn't auto-update if key exists unless we wipe it?
+                    # Better approach: We update the prompt in config and st.rerun() to reflect change in text_area
+                    user_config['prompts'] = prompts
+                    fm.save_user_config(st.session_state.user_id, user_config)
                     st.rerun()
+
+            current_val = prompts.get(key, default_val)
+            new_val = st.text_area(f"Edit {key}", value=current_val, height=150, key=f"prompt_{key}")
+            prompts[key] = new_val
+            st.divider()
+            
+        if st.button("💾 Save All Prompts"):
+            user_config['prompts'] = prompts
+            fm.save_user_config(st.session_state.user_id, user_config)
+            st.success("Prompts saved!")
+
+        
+
+
+# --- PAGE: PROFILES (MANAGE FILES) --------------------
+elif page == "Profiles":
+    st.header("📂 File Management")
+    
+    templates_dir = user_dir / "templates"
+    profiles_dir = user_dir / "linkedin_profiles"
+    
+    tab1, tab2 = st.tabs(["📄 Resume Templates (.tex)", "🔗 LinkedIn Profiles (.pdf)"])
+    
+    # RESUME TEMPLATES SECTION
+    with tab1:
+        st.subheader("Resume Templates")
+        
+        # List Existing
+        temps = [f for f in templates_dir.glob("*.tex")] + [f for f in templates_dir.glob("*.txt")]
+        if temps:
+            for t in temps:
+                c1, c2 = st.columns([4, 1])
+                with c1:
+                    st.markdown(f"📄 **{t.name}**")
+                with c2:
+                    if st.button("🗑️", key=f"del_temp_{t.name}", help="Delete Template"):
+                        os.remove(t)
+                        st.rerun()
+                st.divider()
         else:
             st.info("No templates found.")
             
-    with tab2:
-        st.subheader("Upload New Template")
-        up_temp = st.file_uploader("Choose a .tex or .txt file", type=["tex", "txt"])
-        if st.button("📤 Upload Template"):
-            if up_temp:
-                with open(os.path.join(template_dir, up_temp.name), "wb") as f:
-                    f.write(up_temp.getbuffer())
-                st.success(f"Uploaded {up_temp.name}")
+        # Upload New
+        st.caption("Upload New Template")
+        uploaded_temp = st.file_uploader("Select .tex file", type=["tex", "txt"], key="uploader_temp")
+        if uploaded_temp:
+            if st.button("📤 Upload Template"):
+                with open(templates_dir / uploaded_temp.name, "wb") as f:
+                    f.write(uploaded_temp.getbuffer())
+                st.success(f"Uploaded {uploaded_temp.name}")
+                time.sleep(1)
                 st.rerun()
 
-# Sidebar for auxiliary controls
-with st.sidebar:
-    st.image("https://img.icons8.com/?size=100&id=12150&format=png&color=000000", width=100)
-    st.title("ATS Agent")
-    st.markdown("---")
-    if st.button("🔍 View Technical Logs"):
-        show_log_dialog()
-    st.markdown("---")
-    st.info("Tailor your professional presence with AI-driven precision.")
+    # LINKEDIN PROFILES SECTION
+    with tab2:
+        st.subheader("LinkedIn Profiles")
+        
+        # List Existing
+        profs = [f for f in profiles_dir.glob("*.pdf")]
+        if profs:
+            for p in profs:
+                c1, c2 = st.columns([4, 1])
+                with c1:
+                    st.markdown(f"🔗 **{p.name}**")
+                with c2:
+                    if st.button("🗑️", key=f"del_prof_{p.name}", help="Delete Profile"):
+                        os.remove(p)
+                        st.rerun()
+                st.divider()
+        else:
+            st.info("No profiles found.")
+            
+        # Upload New
+        st.caption("Upload New Profile")
+        uploaded_prof = st.file_uploader("Select .pdf file", type=["pdf"], key="uploader_prof")
+        if uploaded_prof:
+            if st.button("📤 Upload Profile"):
+                with open(profiles_dir / uploaded_prof.name, "wb") as f:
+                    f.write(uploaded_prof.getbuffer())
+                st.success(f"Uploaded {uploaded_prof.name}")
+                time.sleep(1)
+                st.rerun()
 
-# Main content area
-st.markdown('<div class="fade-in">', unsafe_allow_html=True)
-
-# Step 1: Initialization logic
-if machine.state == "start":
-    machine.state = "waiting_job_description"
-    st.rerun()
-
-# Step 2: Main Input Page
-elif machine.state == "waiting_job_description":
-    st.subheader("ATS Optimization Configuration")
+# --- PAGE: DASHBOARD (MAIN APP) ----------------------
+elif page == "Dashboard":
+    # Ensure directories
+    templates_dir = user_dir / "templates"
+    profiles_dir = user_dir / "linkedin_profiles"
+    output_dir = user_dir / "output"
     
-    with st.container():
-        st.markdown('<div class="glass-card">', unsafe_allow_html=True)
-        job_description_text = st.text_area("📋 Paste Job Description here:", height=300, 
-                                         placeholder="Enter the full job description to optimize your resume against...")
-        
-        col1, col2 = st.columns(2)
-        with col1:
-            all_templates = [f for f in os.listdir(template_dir) if f.endswith(('.txt', '.tex'))]
-            tc1, tc2 = st.columns([4, 1])
-            with tc1:
-                selected_template = st.selectbox("📄 Select Base LaTeX Template", all_templates)
-            with tc2:
-                st.write("") # alignment
-                if st.button("⚙️", help="Manage Templates", key="manage_temps_btn"):
-                    manage_templates_dialog()
-                    
-        with col2:
-            linkedin_profiles_dir = os.path.join(project_root, "linkedin_profiles")
-            all_linkedin_pdfs = [f for f in os.listdir(linkedin_profiles_dir) if f.endswith('.pdf')]
-            pc1, pc2 = st.columns([4, 1])
-            with pc1:
-                selected_linkedin = st.selectbox("🔗 Select LinkedIn Profile (PDF)", all_linkedin_pdfs)
-            with pc2:
-                st.write("") # alignment
-                if st.button("⚙️", help="Manage Profiles", key="manage_profs_btn"):
-                    manage_profiles_dialog()
-        
-        # Pre-fill logic for resume name
-        default_name = os.path.splitext(selected_template)[0]
-        if st.session_state.custom_resume_name == "" or st.session_state.get('last_selected_template') != selected_template:
-            st.session_state.custom_resume_name = default_name
-            st.session_state.last_selected_template = selected_template
+    # State Init
+    states_to_init = {
+        "resume_text": "",
+        "linkedin_text": "",
+        "custom_resume_name": "",
+        "job_description_text": "",
+        "chat_history": []
+    }
+    for k, v in states_to_init.items():
+        if k not in st.session_state:
+            st.session_state[k] = v
 
-        custom_name = st.text_input("📝 Resume Output Filename", value=st.session_state.custom_resume_name, 
-                                   placeholder="Enter desired filename (without extension)")
-        st.session_state.custom_resume_name = custom_name
-        
-        st.markdown('</div>', unsafe_allow_html=True)
-
-    if st.button("🚀 Optimize My Resume"):
-        if job_description_text.strip():
-            st.session_state.selected_job_text = job_description_text
-            st.session_state.selected_template = selected_template
-            st.session_state.selected_template_path = os.path.join(template_dir, selected_template)
-            st.session_state.selected_linkedin_path = os.path.join(linkedin_profiles_dir, selected_linkedin)
-            st.session_state.job_id = f"job_{int(time.time())}"
-            # Ensure custom_resume_name includes job_id for uniqueness if needed, or trust user
-            # Let's use user name but append ID to avoid collisions unless they explicitly changed it?
-            # User said: "the person should edit that thing". So we trust the user's name.
-            # But we might want to ensure it's not empty.
-            if not st.session_state.custom_resume_name.strip():
-                st.session_state.custom_resume_name = f"Resume_{st.session_state.user_name}_{st.session_state.job_id}"
-            
-            st.session_state.logger.log(f"Optimization session initialized for {st.session_state.user_name} (File: {st.session_state.custom_resume_name})")
-            machine.next("job_description_uploaded")
-            st.rerun()
-        else:
-            st.error("Please provide a job description!")
-
-# Step 3: LLM Optimization Process
-elif machine.state == "processing_llm":
-    with st.status("🔮 AI Resume Agent at work...", expanded=True) as status:
-        msg = "Initializing AI Optimized Pipeline..."
-        st.write(msg)
-        st.session_state.logger.log(msg)
-        llm_agent = LLMAgent(config)
-        
-        # Scoring Initial
-        msg = "Evaluating current resume alignment..."
-        st.write(msg)
-        st.session_state.logger.log(msg)
-        if not st.session_state.resume_text:
-            st.session_state.resume_text = extract_text_from_file(st.session_state.selected_template_path)
-        st.session_state.initial_ats_score = llm_agent.get_ats_score(st.session_state.resume_text, st.session_state.selected_job_text)
-        st.session_state.logger.log(f"Initial ATS Match: {st.session_state.initial_ats_score.get('score', 0)}%")
-        
-        # Optimization
-        msg = "Re-engineering CV content for maximum impact..."
-        st.write(msg)
-        st.session_state.logger.log(msg)
-        if not st.session_state.linkedin_text:
-            st.session_state.linkedin_text = extract_text_from_pdf(st.session_state.selected_linkedin_path)
-            
-        optimized_latex = llm_agent.optimize_latex(
-            st.session_state.resume_text,
-            st.session_state.resume_text,
-            st.session_state.linkedin_text,
-            st.session_state.selected_job_text
-        )
-        st.session_state.logger.log("LaTeX optimization complete.")
-        
-        # Cleaning up potential MD blocks
-        if optimized_latex.strip().startswith("```"):
-            optimized_latex = optimized_latex.split("\n", 1)[1].rsplit("\n", 1)[0]
-        
-        # Compilation
-        msg = "Generating high-fidelity PDF asset..."
-        st.write(msg)
-        st.session_state.logger.log(msg)
-        base_name = st.session_state.custom_resume_name
-        output_tex_path = os.path.join(output_dir, f'{base_name}.tex')
-        with open(output_tex_path, 'w', encoding='utf-8') as f: f.write(optimized_latex)
-        
-        latex_compiler = config.get("database", {}).get("latex_compiler", "pdflatex")
-        st.session_state.logger.log(f"Running LaTeX compiler: {latex_compiler}")
-        result = subprocess.run([latex_compiler, "-interaction=nonstopmode", f"{base_name}.tex"],
-                               cwd=output_dir, capture_output=True, text=True, shell=True)
-        
-        if result.returncode != 0:
-            st.session_state.logger.log(f"LaTeX Warning: {result.stderr[:200]}...")
-        else:
-            st.session_state.logger.log("PDF compiled successfully.")
-        
-        # Cleanup: Move auxiliary/temporary files to raw_data
-        raw_data_dir = os.path.join(output_dir, "raw_data")
-        os.makedirs(raw_data_dir, exist_ok=True)
-        
-        extensions_to_move = ['.tex', '.log', '.aux', '.out', '.toc', '.lof', '.lot', '.fls', '.fdb_latexmk']
-        for ext in extensions_to_move:
-            potential_file = os.path.join(output_dir, f"{base_name}{ext}")
-            if os.path.exists(potential_file):
-                try:
-                    target_path = os.path.join(raw_data_dir, f"{base_name}{ext}")
-                    # Remove target if exists for overwrite behavior
-                    if os.path.exists(target_path):
-                        os.remove(target_path)
-                    os.rename(potential_file, target_path)
-                except Exception as e:
-                    st.session_state.logger.log(f"Cleanup Error ({ext}): {str(e)}")
-        
-        # Metrics
-        msg = "Finalizing career metrics and coaching insights..."
-        st.write(msg)
-        st.session_state.logger.log(msg)
-        st.session_state.opt_summary = llm_agent.get_optimization_summary(optimized_latex, st.session_state.selected_job_text)
-        st.session_state.final_ats_score = llm_agent.get_ats_score(optimized_latex, st.session_state.selected_job_text)
-        st.session_state.followup_answers = llm_agent.get_followup_answers(optimized_latex, st.session_state.selected_job_text)
-        st.session_state.logger.log(f"Final ATS Match: {st.session_state.final_ats_score.get('score', 0)}%")
-        
-        status.update(label="✅ Optimization Complete!", state="complete", expanded=False)
-        st.session_state.logger.log("Pipeline finished successfully.")
-        time.sleep(1)
-        machine.next("finished")
+    if machine.state == "start":
+        machine.state = "waiting_job_description"
         st.rerun()
 
-# Step 4: Finished Results
-elif machine.state == "job_exploration":
-    st.header("✨ Your Tailored Career Assets")
-    
-    base_name = st.session_state.custom_resume_name
-    pdf_path = os.path.join(output_dir, f'{base_name}.pdf')
+    elif machine.state == "waiting_job_description":
+        with st.container(border=True):
+            st.subheader("🚀 Create New Resume")
+            
+            job_desc = st.text_area("Job Description", height=200, placeholder="Paste JD here...", value=st.session_state.job_description_text)
+            st.session_state.job_description_text = job_desc
+            
+            c1, c2 = st.columns(2)
+            with c1:
+                # LIST TEMPLATES
+                temps = [f.name for f in templates_dir.glob("*.tex")] + [f.name for f in templates_dir.glob("*.txt")]
+                if not temps:
+                    st.warning("No templates found!")
+                    st.markdown("👉 [Manage Templates in Profile Page](/)", unsafe_allow_html=True)
+                    sel_temp = None
+                else:
+                    sel_temp = st.selectbox("Select Template", temps)
+            
+            with c2:
+                # LIST PROFILES
+                profs = [f.name for f in profiles_dir.glob("*.pdf")]
+                if not profs:
+                    st.warning("No profiles found!")
+                    st.markdown("👉 [Manage Profiles in Profile Page](/)", unsafe_allow_html=True)
+                    sel_prof = None
+                else:
+                    sel_prof = st.selectbox("Select LinkedIn Profile", profs)
+            
+            # Logic to update custom_resume_name if selection changes
+            if "last_selected_template" not in st.session_state:
+                st.session_state.last_selected_template = None
+            
+            if sel_temp and sel_temp != st.session_state.last_selected_template:
+                # Update default name
+                base_name = os.path.splitext(sel_temp)[0]
+                st.session_state.custom_resume_name = base_name
+                st.session_state.last_selected_template = sel_temp
 
-    # Metrics Section
-    st.markdown('<div class="glass-card">', unsafe_allow_html=True)
-    m1, m2 = st.columns(2)
-    with m1:
-        if st.session_state.initial_ats_score:
-            st.metric("📊 Initial Match", f"{st.session_state.initial_ats_score.get('score', 0)}%")
-            st.caption(f"_{st.session_state.initial_ats_score.get('justification', '')}_")
-    with m2:
-        if st.session_state.final_ats_score:
-            score = st.session_state.final_ats_score.get("score", 0)
-            delta = score - st.session_state.initial_ats_score.get("score", 0) if st.session_state.initial_ats_score else 0
-            st.metric("🚀 Post-Optimization", f"{score}%", delta=f"+{delta}%")
-            st.caption(f"_{st.session_state.final_ats_score.get('justification', '')}_")
-    st.markdown('</div>', unsafe_allow_html=True)
+            resume_name = st.text_input("Output Filename", value=st.session_state.custom_resume_name, help="Defaults to template name. Change if desired.")
+            st.session_state.custom_resume_name = resume_name
+        
+        if st.button("✨ Generate Optimized Resume"):
+            if not job_desc or not sel_temp or not sel_prof:
+                st.error("Please ensure you have a Job Description, a Template, and a LinkedIn Profile selected.")
+            else:
+                st.session_state.selected_template_path = templates_dir / sel_temp
+                st.session_state.selected_linkedin_path = profiles_dir / sel_prof
+                machine.next("processing_llm")
+                st.rerun()
 
-    # Actions Section
-    c1, c2, c3 = st.columns([3, 3, 2])
-    with c1:
-        if os.path.exists(pdf_path):
-            with open(pdf_path, "rb") as f:
-                st.download_button(label="📥 Download Tailored PDF Resume", data=f, 
-                                 file_name=f"{st.session_state.custom_resume_name}.pdf", mime="application/pdf")
-    with c2:
-        tex_path = os.path.join(output_dir, "raw_data", f"{base_name}.tex")
-        if os.path.exists(tex_path):
-            with open(tex_path, "r", encoding="utf-8") as f:
-                st.download_button(label="📄 Download Tailored TeX Source", data=f, 
-                                 file_name=f"{st.session_state.custom_resume_name}.tex", mime="text/x-tex")
-    with c3:
-        if st.button("🔄 New Optimization"):
-            machine.reset()
-            st.rerun()
-
-    # Insights Section
-    st.divider()
-    ans_col, change_col, key_col = st.columns(3)
-    
-    with ans_col:
-        st.markdown('<div class="glass-card" style="height: 100%;">', unsafe_allow_html=True)
-        st.subheader("💡 Coaching Insights")
-        answers = st.session_state.followup_answers
-        if isinstance(answers, dict):
-            st.markdown("**Best Fit:**")
-            st.info(answers.get("best_fit", "Pending..."))
-            st.markdown("**Motivation:**")
-            st.info(answers.get("why_organization", "Pending..."))
-        st.markdown('</div>', unsafe_allow_html=True)
-    
-    with change_col:
-        st.markdown('<div class="glass-card" style="height: 100%;">', unsafe_allow_html=True)
-        st.subheader("🛠️ Changes")
-        summary = st.session_state.opt_summary
-        if isinstance(summary, dict):
-            st.markdown(f"**Focus:** {summary.get('location', 'Global Match')}")
-            for change in summary.get('changes', []):
-                st.write(f"• {change}")
-        st.markdown('</div>', unsafe_allow_html=True)
-
-    with key_col:
-        st.markdown('<div class="glass-card" style="height: 100%;">', unsafe_allow_html=True)
-        st.subheader("🔑 Keywords")
-        if isinstance(summary, dict):
-            for kw in summary.get('keywords', []):
-                st.markdown(f"`{kw}`")
-        st.markdown('</div>', unsafe_allow_html=True)
-
-    # Chat Section - Full Width
-    st.divider()
-    st.subheader(f"💬 Chat with {config.get('default_model', 'gpt-4o')}")
-
-    # Initialize or load chat history
-    if "chat_history" not in st.session_state or not st.session_state.chat_history:
-        st.session_state.chat_history = [
-            {
-                "role": "system",
-                "content": starting_chat_prompt_model.format(
-                    resume_text=st.session_state.resume_text,
-                    linkedin_text=st.session_state.linkedin_text,
-                    job_description=st.session_state.selected_job_text
+    elif machine.state == "processing_llm":
+        with st.status("🤖 AI Agent Working...", expanded=True):
+            st.write("Initializing Agent with User Config...")
+            
+            # --- AGENT INIT ---
+            try:
+                agent = LLMAgent(st.session_state.user_id, fm)
+                
+                st.write("Reading inputs...")
+                resume_txt = extract_text_from_file(st.session_state.selected_template_path)
+                linkedin_txt = extract_text_from_file(st.session_state.selected_linkedin_path)
+                
+                st.write("Optimizing Resume (this may take a minute)...")
+                optimized_latex = agent.optimize_latex(
+                    resume_txt, 
+                    resume_txt, # Passing resume twice as template and text for now, 
+                    linkedin_txt, 
+                    st.session_state.job_description_text
                 )
-            }
-        ]
+                
+                # SAVE OUTPUT
+                out_path = output_dir / f"{st.session_state.custom_resume_name}.tex"
+                with open(out_path, "w", encoding="utf-8") as f:
+                    f.write(optimized_latex)
+                
+                st.write("Compiling PDF...")
+                # Note: Compiler path is hardcoded in original config, 
+                # we might need to assume it's in path or add to user config.
+                # using pdflatex from path for now.
+                import subprocess
+                cmd = ["pdflatex", "-interaction=nonstopmode", f"{st.session_state.custom_resume_name}.tex"]
+                subprocess.run(cmd, cwd=str(output_dir), capture_output=True)
+                
+                # GET METRICS
+                st.write("Calculating Scores...")
+                metrics = agent.get_ats_score(optimized_latex, st.session_state.job_description_text)
+                st.session_state.final_metrics = metrics
+                
+                st.write("Done!")
+                time.sleep(1)
+                machine.next("finished")
+                st.rerun()
+                
+            except Exception as e:
+                st.error(f"An error occurred: {e}")
+                # st.exception(e) # Debugging
+                if st.button("Back"):
+                    machine.state = "waiting_job_description"
+                    st.rerun()
 
-    # Initialize the LLM Chat Agent
-    llm_chat_agent = LLM_Chat(config)
+                if st.button("Back"):
+                    machine.state = "waiting_job_description"
+                    st.rerun()
 
-    # Display chat messages (skip system prompt in display)
-    if st.session_state.chat_history:
-        for message in st.session_state.chat_history:
-            if message["role"] != "system":
-                with st.chat_message(message["role"]):
-                    st.markdown(message["content"])
+    elif machine.state == "job_exploration": # Final state
+        st.header("📝 Resume Editor & Preview")
+        
+        # Load current files
+        tex_path = output_dir / f"{st.session_state.custom_resume_name}.tex"
+        pdf_path = output_dir / f"{st.session_state.custom_resume_name}.pdf"
+        
+        # Ensure TeX exists in session for editing if not already
+        if "current_latex" not in st.session_state:
+            if tex_path.exists():
+                with open(tex_path, "r", encoding="utf-8") as f:
+                    st.session_state.current_latex = f.read()
+            else:
+                st.session_state.current_latex = ""
+        
+        col_preview, col_edit = st.columns([1, 1])
+        
+        # --- LEFT: PDF PREVIEW ---
+        with col_preview:
+            st.subheader("📄 Live Preview")
+            if pdf_path.exists():
+                import base64
+                with open(pdf_path, "rb") as f:
+                    base64_pdf = base64.b64encode(f.read()).decode('utf-8')
+                pdf_display = f'<iframe src="data:application/pdf;base64,{base64_pdf}" width="100%" height="800" type="application/pdf"></iframe>'
+                st.markdown(pdf_display, unsafe_allow_html=True)
+            else:
+                st.error("PDF not found. Try compiling.")
+        
+        # --- RIGHT: EDITOR & CHAT ---
+        with col_edit:
+            tab_edit, tab_chat = st.tabs(["✏️ Editor", "💬 AI Refinement"])
+            
+            # 1. MANUAL EDITOR
+            with tab_edit:
+                new_latex = st.text_area("LaTeX Source", value=st.session_state.current_latex, height=600)
+                st.session_state.current_latex = new_latex
+                
+                if st.button("⚡ Re-Compile PDF"):
+                    # Save TeX
+                    with open(tex_path, "w", encoding="utf-8") as f:
+                        f.write(st.session_state.current_latex)
+                    
+                    # Compile
+                    with st.spinner("Compiling..."):
+                        import subprocess
+                        subprocess.run(["pdflatex", "-interaction=nonstopmode", f"{st.session_state.custom_resume_name}.tex"], cwd=str(output_dir))
+                    st.success("Compiled!")
+                    st.rerun()
+                
+                # Download Buttons
+                with open(tex_path, "r", encoding="utf-8") as f:
+                    st.download_button("📥 Download TeX", f, file_name=f"{st.session_state.custom_resume_name}.tex")
+                if pdf_path.exists():
+                    with open(pdf_path, "rb") as f:
+                        st.download_button("📥 Download PDF", f, file_name=f"{st.session_state.custom_resume_name}.pdf")
 
-    # Handle chat input
-    if prompt := st.chat_input("Ask me anything about your career path..."):
-        # Add user message to chat history
-        st.session_state.chat_history.append({"role": "user", "content": prompt})
+            # 2. CHAT REFINEMENT
+            with tab_chat:
+                st.warning("Chat with AI to refine your resume.")
+                
+                # Chat History Display
+                if "refinement_chat" not in st.session_state:
+                    st.session_state.refinement_chat = []
+                
+                for msg in st.session_state.refinement_chat:
+                    with st.chat_message(msg["role"]):
+                        st.write(msg["content"])
+                
+                # Input
+                if prompt := st.chat_input("E.g., 'Make the summary shorter'"):
+                    # User Msg
+                    st.session_state.refinement_chat.append({"role": "user", "content": prompt})
+                    with st.chat_message("user"):
+                        st.write(prompt)
+                    
+                    # AI Processing
+                    try:
+                        agent = LLMAgent(st.session_state.user_id, fm)
+                        with st.status("Refining Resume..."):
+                            updated_latex = agent.refine_latex(st.session_state.current_latex, prompt)
+                            
+                        # Update State
+                        # Clean markdown if LLM adds it
+                        updated_latex = updated_latex.replace("```latex", "").replace("```", "").strip()
+                        st.session_state.current_latex = updated_latex
+                        
+                        # Auto-save & Compile
+                        with open(tex_path, "w", encoding="utf-8") as f:
+                            f.write(updated_latex)
+                        import subprocess
+                        subprocess.run(["pdflatex", "-interaction=nonstopmode", f"{st.session_state.custom_resume_name}.tex"], cwd=str(output_dir))
+                        
+                        st.session_state.refinement_chat.append({"role": "assistant", "content": "I've updated the resume and re-compiled it for you!"})
+                        st.rerun()
+                        
+                    except Exception as e:
+                        st.error(f"Error refining: {e}")
+            
+        if st.button("🔄 Start Over (New Job)"):
+            machine.reset()
+            # Clear specific keys
+            keys = ["refinement_chat", "current_latex", "last_selected_template"]
+            for k in keys:
+                if k in st.session_state:
+                    del st.session_state[k]
+            st.rerun()
 
-        # Display user message and rerun
-        with st.chat_message("user"):
-            st.markdown(prompt)
-
-        with st.spinner("Assistant is thinking..."):
-            assistant_response = llm_chat_agent.get_chat_answer(final_text_prompt=st.session_state.chat_history)
-
-        # Add assistant response to chat history
-        st.session_state.chat_history.append({"role": "assistant", "content": assistant_response})
-        st.rerun()
+# --- PAGE: HISTORY -----------------------------------
+elif page == "History":
+    st.header("📜 Resume History")
+    output_dir = user_dir / "output"
+    files = list(output_dir.glob("*.pdf"))
+    
+    if not files:
+        st.info("No generated resumes found.")
+    else:
+        for f in files:
+            c1, c2 = st.columns([4, 1])
+            with c1:
+                st.write(f"**{f.name}**")
+                st.caption(f"Created: {time.ctime(f.stat().st_ctime)}")
+            with c2:
+                with open(f, "rb") as pdf_file:
+                    st.download_button("📥", pdf_file, key=f.name, file_name=f.name)
+            st.divider()
