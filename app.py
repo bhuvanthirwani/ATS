@@ -156,7 +156,8 @@ states_to_init = {
     "followup_answers": None,
     "initial_ats_score": None,
     "final_ats_score": None,
-    "chat_history": []
+    "chat_history": [],
+    "custom_resume_name": ""
 }
 for key, val in states_to_init.items():
     if key not in st.session_state or st.session_state[key] is None:
@@ -165,7 +166,6 @@ for key, val in states_to_init.items():
 # --- UI LAYOUT & MODERNIZATION -------------------------
 if "show_log" not in st.session_state:
     st.session_state.show_log = False
-
 @st.dialog("📋 Technical Activity Log", width="large")
 def show_log_dialog():
     @st.fragment(run_every=3)
@@ -174,6 +174,71 @@ def show_log_dialog():
         st.code("\n".join(st.session_state.logger.logs[::-1]), language="text")
     
     log_viewer()
+
+@st.dialog("📂 Manage LinkedIn Profiles", width="medium")
+def manage_profiles_dialog():
+    linkedin_profiles_dir = os.path.join(project_root, "linkedin_profiles")
+    all_pdfs = [f for f in os.listdir(linkedin_profiles_dir) if f.endswith('.pdf')]
+    
+    st.subheader("Upload New Profile")
+    uploaded_file = st.file_uploader("Choose a LinkedIn PDF", type="pdf")
+    if st.button("📤 Upload PDF"):
+        if uploaded_file:
+            with open(os.path.join(linkedin_profiles_dir, uploaded_file.name), "wb") as f:
+                f.write(uploaded_file.getbuffer())
+            st.success(f"Uploaded {uploaded_file.name}")
+            st.rerun()
+    
+    st.divider()
+    st.subheader("Delete Existing Profile")
+    if all_pdfs:
+        to_delete = st.selectbox("Select Profile to Delete", all_pdfs, key="del_profile")
+        if st.button("🗑️ Delete Profile", type="secondary"):
+            os.remove(os.path.join(linkedin_profiles_dir, to_delete))
+            st.warning(f"Deleted {to_delete}")
+            st.rerun()
+    else:
+        st.info("No profiles found.")
+
+@st.dialog("📄 Manage LaTeX Templates", width="large")
+def manage_templates_dialog():
+    template_dir = os.path.join(project_root, "templates")
+    all_temps = [f for f in os.listdir(template_dir) if f.endswith(('.txt', '.tex'))]
+    
+    tab1, tab2 = st.tabs(["✏️ Edit / Delete", "📤 Add New"])
+    
+    with tab1:
+        if all_temps:
+            selected = st.selectbox("Select Template", all_temps, key="edit_temp_select")
+            file_path = os.path.join(template_dir, selected)
+            with open(file_path, "r", encoding="utf-8") as f:
+                content = f.read()
+            
+            new_content = st.text_area("Edit Template Content", value=content, height=400)
+            
+            c1, c2 = st.columns(2)
+            with c1:
+                if st.button("💾 Save Changes"):
+                    with open(file_path, "w", encoding="utf-8") as f:
+                        f.write(new_content)
+                    st.success("Template updated!")
+            with c2:
+                if st.button("🗑️ Delete Template", type="secondary"):
+                    os.remove(file_path)
+                    st.warning(f"Deleted {selected}")
+                    st.rerun()
+        else:
+            st.info("No templates found.")
+            
+    with tab2:
+        st.subheader("Upload New Template")
+        up_temp = st.file_uploader("Choose a .tex or .txt file", type=["tex", "txt"])
+        if st.button("📤 Upload Template"):
+            if up_temp:
+                with open(os.path.join(template_dir, up_temp.name), "wb") as f:
+                    f.write(up_temp.getbuffer())
+                st.success(f"Uploaded {up_temp.name}")
+                st.rerun()
 
 # Sidebar for auxiliary controls
 with st.sidebar:
@@ -205,11 +270,35 @@ elif machine.state == "waiting_job_description":
         col1, col2 = st.columns(2)
         with col1:
             all_templates = [f for f in os.listdir(template_dir) if f.endswith(('.txt', '.tex'))]
-            selected_template = st.selectbox("📄 Select Base LaTeX Template", all_templates)
+            tc1, tc2 = st.columns([4, 1])
+            with tc1:
+                selected_template = st.selectbox("📄 Select Base LaTeX Template", all_templates)
+            with tc2:
+                st.write("") # alignment
+                if st.button("⚙️", help="Manage Templates", key="manage_temps_btn"):
+                    manage_templates_dialog()
+                    
         with col2:
             linkedin_profiles_dir = os.path.join(project_root, "linkedin_profiles")
             all_linkedin_pdfs = [f for f in os.listdir(linkedin_profiles_dir) if f.endswith('.pdf')]
-            selected_linkedin = st.selectbox("🔗 Select LinkedIn Profile (PDF)", all_linkedin_pdfs)
+            pc1, pc2 = st.columns([4, 1])
+            with pc1:
+                selected_linkedin = st.selectbox("🔗 Select LinkedIn Profile (PDF)", all_linkedin_pdfs)
+            with pc2:
+                st.write("") # alignment
+                if st.button("⚙️", help="Manage Profiles", key="manage_profs_btn"):
+                    manage_profiles_dialog()
+        
+        # Pre-fill logic for resume name
+        default_name = os.path.splitext(selected_template)[0]
+        if st.session_state.custom_resume_name == "" or st.session_state.get('last_selected_template') != selected_template:
+            st.session_state.custom_resume_name = default_name
+            st.session_state.last_selected_template = selected_template
+
+        custom_name = st.text_input("📝 Resume Output Filename", value=st.session_state.custom_resume_name, 
+                                   placeholder="Enter desired filename (without extension)")
+        st.session_state.custom_resume_name = custom_name
+        
         st.markdown('</div>', unsafe_allow_html=True)
 
     if st.button("🚀 Optimize My Resume"):
@@ -219,7 +308,14 @@ elif machine.state == "waiting_job_description":
             st.session_state.selected_template_path = os.path.join(template_dir, selected_template)
             st.session_state.selected_linkedin_path = os.path.join(linkedin_profiles_dir, selected_linkedin)
             st.session_state.job_id = f"job_{int(time.time())}"
-            st.session_state.logger.log(f"Optimization session initialized for {st.session_state.user_name} (Job ID: {st.session_state.job_id})")
+            # Ensure custom_resume_name includes job_id for uniqueness if needed, or trust user
+            # Let's use user name but append ID to avoid collisions unless they explicitly changed it?
+            # User said: "the person should edit that thing". So we trust the user's name.
+            # But we might want to ensure it's not empty.
+            if not st.session_state.custom_resume_name.strip():
+                st.session_state.custom_resume_name = f"Resume_{st.session_state.user_name}_{st.session_state.job_id}"
+            
+            st.session_state.logger.log(f"Optimization session initialized for {st.session_state.user_name} (File: {st.session_state.custom_resume_name})")
             machine.next("job_description_uploaded")
             st.rerun()
         else:
@@ -265,7 +361,7 @@ elif machine.state == "processing_llm":
         msg = "Generating high-fidelity PDF asset..."
         st.write(msg)
         st.session_state.logger.log(msg)
-        base_name = f'Resume_{st.session_state.user_name}_{st.session_state.job_id}'
+        base_name = st.session_state.custom_resume_name
         output_tex_path = os.path.join(output_dir, f'{base_name}.tex')
         with open(output_tex_path, 'w', encoding='utf-8') as f: f.write(optimized_latex)
         
@@ -278,6 +374,23 @@ elif machine.state == "processing_llm":
             st.session_state.logger.log(f"LaTeX Warning: {result.stderr[:200]}...")
         else:
             st.session_state.logger.log("PDF compiled successfully.")
+        
+        # Cleanup: Move auxiliary/temporary files to raw_data
+        raw_data_dir = os.path.join(output_dir, "raw_data")
+        os.makedirs(raw_data_dir, exist_ok=True)
+        
+        extensions_to_move = ['.tex', '.log', '.aux', '.out', '.toc', '.lof', '.lot', '.fls', '.fdb_latexmk']
+        for ext in extensions_to_move:
+            potential_file = os.path.join(output_dir, f"{base_name}{ext}")
+            if os.path.exists(potential_file):
+                try:
+                    target_path = os.path.join(raw_data_dir, f"{base_name}{ext}")
+                    # Remove target if exists for overwrite behavior
+                    if os.path.exists(target_path):
+                        os.remove(target_path)
+                    os.rename(potential_file, target_path)
+                except Exception as e:
+                    st.session_state.logger.log(f"Cleanup Error ({ext}): {str(e)}")
         
         # Metrics
         msg = "Finalizing career metrics and coaching insights..."
@@ -298,7 +411,7 @@ elif machine.state == "processing_llm":
 elif machine.state == "job_exploration":
     st.header("✨ Your Tailored Career Assets")
     
-    base_name = f'Resume_{st.session_state.user_name}_{st.session_state.job_id}'
+    base_name = st.session_state.custom_resume_name
     pdf_path = os.path.join(output_dir, f'{base_name}.pdf')
 
     # Metrics Section
@@ -317,13 +430,19 @@ elif machine.state == "job_exploration":
     st.markdown('</div>', unsafe_allow_html=True)
 
     # Actions Section
-    c1, c2 = st.columns([3, 1])
+    c1, c2, c3 = st.columns([3, 3, 2])
     with c1:
         if os.path.exists(pdf_path):
             with open(pdf_path, "rb") as f:
                 st.download_button(label="📥 Download Tailored PDF Resume", data=f, 
-                                 file_name="Optimized_Resume.pdf", mime="application/pdf")
+                                 file_name=f"{st.session_state.custom_resume_name}.pdf", mime="application/pdf")
     with c2:
+        tex_path = os.path.join(output_dir, "raw_data", f"{base_name}.tex")
+        if os.path.exists(tex_path):
+            with open(tex_path, "r", encoding="utf-8") as f:
+                st.download_button(label="📄 Download Tailored TeX Source", data=f, 
+                                 file_name=f"{st.session_state.custom_resume_name}.tex", mime="text/x-tex")
+    with c3:
         if st.button("🔄 New Optimization"):
             machine.reset()
             st.rerun()
