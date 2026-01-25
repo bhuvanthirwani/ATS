@@ -377,6 +377,8 @@ elif page == "Profiles":
 
 # --- PAGE: DASHBOARD (MAIN APP) ----------------------
 elif page == "Dashboard":
+    from compiler import LaTeXCompiler
+    
     # Ensure directories
     templates_dir = user_dir / "templates"
     profiles_dir = user_dir / "linkedin_profiles"
@@ -384,11 +386,12 @@ elif page == "Dashboard":
     
     # State Init
     states_to_init = {
-        "resume_text": "",
-        "linkedin_text": "",
-        "custom_resume_name": "",
         "job_description_text": "",
-        "chat_history": []
+        "analysis_result": None,
+        "optimization_result": None,
+        "selected_template": None,
+        "selected_profile": None,
+        "custom_resume_name": ""
     }
     for k, v in states_to_init.items():
         if k not in st.session_state:
@@ -407,207 +410,173 @@ elif page == "Dashboard":
             
             c1, c2 = st.columns(2)
             with c1:
-                # LIST TEMPLATES
                 temps = [f.name for f in templates_dir.glob("*.tex")] + [f.name for f in templates_dir.glob("*.txt")]
                 if not temps:
                     st.warning("No templates found!")
-                    st.markdown("👉 [Manage Templates in Profile Page](/)", unsafe_allow_html=True)
                     sel_temp = None
                 else:
                     sel_temp = st.selectbox("Select Template", temps)
+                    st.session_state.selected_template = sel_temp
             
             with c2:
-                # LIST PROFILES
                 profs = [f.name for f in profiles_dir.glob("*.pdf")]
                 if not profs:
                     st.warning("No profiles found!")
-                    st.markdown("👉 [Manage Profiles in Profile Page](/)", unsafe_allow_html=True)
                     sel_prof = None
                 else:
                     sel_prof = st.selectbox("Select LinkedIn Profile", profs)
-            
-            # Logic to update custom_resume_name if selection changes
-            if "last_selected_template" not in st.session_state:
-                st.session_state.last_selected_template = None
-            
-            if sel_temp and sel_temp != st.session_state.last_selected_template:
-                # Update default name
-                base_name = os.path.splitext(sel_temp)[0]
-                st.session_state.custom_resume_name = base_name
-                st.session_state.last_selected_template = sel_temp
+                    st.session_state.selected_profile = sel_prof
 
-            resume_name = st.text_input("Output Filename", value=st.session_state.custom_resume_name, help="Defaults to template name. Change if desired.")
-            st.session_state.custom_resume_name = resume_name
+            if sel_temp:
+                base_name = os.path.splitext(sel_temp)[0]
+                resume_name = st.text_input("Output Filename", value=base_name)
+                st.session_state.custom_resume_name = resume_name
         
-        if st.button("✨ Generate Optimized Resume"):
+        if st.button("🔍 Analyze Match"):
             if not job_desc or not sel_temp or not sel_prof:
-                st.error("Please ensure you have a Job Description, a Template, and a LinkedIn Profile selected.")
+                st.error("Please provide JD, Template, and LinkedIn Profile.")
             else:
-                st.session_state.selected_template_path = templates_dir / sel_temp
-                st.session_state.selected_linkedin_path = profiles_dir / sel_prof
-                machine.next("processing_llm")
+                machine.next("submit_jd")
                 st.rerun()
 
-    elif machine.state == "processing_llm":
-        with st.status("🤖 AI Agent Working...", expanded=True):
-            st.write("Initializing Agent with User Config...")
-            
-            # --- AGENT INIT ---
+    elif machine.state == "analyzing":
+        with st.status("🔍 Analyzing Resume...", expanded=True):
             try:
                 agent = LLMAgent(st.session_state.user_id, fm)
                 
-                st.write("Reading inputs...")
-                resume_txt = extract_text_from_file(st.session_state.selected_template_path)
-                linkedin_txt = extract_text_from_file(st.session_state.selected_linkedin_path)
+                st.write("Reading files...")
+                resume_path = templates_dir / st.session_state.selected_template
+                resume_text = extract_text_from_file(resume_path)
                 
-                st.write("Optimizing Resume (this may take a minute)...")
-                optimized_latex = agent.optimize_latex(
-                    resume_txt, 
-                    resume_txt, # Passing resume twice as template and text for now, 
-                    linkedin_txt, 
+                st.write("Running ATS Analysis...")
+                analysis = agent.analyze_resume(resume_text, st.session_state.job_description_text)
+                st.session_state.analysis_result = analysis
+                
+                machine.next("analysis_complete")
+                st.success("Analysis complete!")
+                time.sleep(1)
+                st.rerun()
+            except Exception as e:
+                st.error(f"Analysis failed: {e}")
+                if st.button("Retry"):
+                    st.rerun()
+                if st.button("Back"):
+                    machine.state = "waiting_job_description"
+                    st.rerun()
+
+    elif machine.state == "reviewing_analysis":
+        analysis = st.session_state.analysis_result
+        
+        st.header("📊 ATS Analysis Results")
+        
+        col1, col2 = st.columns([1, 2])
+        with col1:
+            st.metric("Initial ATS Score", f"{analysis.ats_score}%")
+            
+        with col2:
+            st.subheader("Key Findings")
+            st.write(f"**Matched Keywords:** {', '.join(analysis.matched_keywords)}")
+            st.warning(f"**Missing Keywords:** {', '.join(analysis.missing_keywords)}")
+
+        with st.expander("Detailed Justification"):
+            st.write(analysis.justification.model_dump())
+
+        c1, c2 = st.columns(2)
+        with c1:
+            if st.button("⬅️ Back"):
+                machine.next("back")
+                st.rerun()
+        with c2:
+            if st.button("✨ Tailor & Optimize"):
+                machine.next("start_optimization")
+                st.rerun()
+
+    elif machine.state == "optimizing":
+        with st.status("🛠️ Optimizing Resume...", expanded=True):
+            try:
+                agent = LLMAgent(st.session_state.user_id, fm)
+                
+                st.write("Extracting Info...")
+                resume_path = templates_dir / st.session_state.selected_template
+                resume_text = extract_text_from_file(resume_path)
+                linkedin_path = profiles_dir / st.session_state.selected_profile
+                linkedin_text = extract_text_from_file(linkedin_path)
+                
+                st.write("Running Optimization Engine...")
+                opt_result = agent.optimize_resume(
+                    st.session_state.analysis_result,
+                    resume_text,
+                    linkedin_text,
                     st.session_state.job_description_text
                 )
+                st.session_state.optimization_result = opt_result
                 
-                # SAVE OUTPUT
-                out_path = output_dir / f"{st.session_state.custom_resume_name}.tex"
-                with open(out_path, "w", encoding="utf-8") as f:
-                    f.write(optimized_latex)
+                st.write("Compiling LaTeX...")
+                tex_filename = f"{st.session_state.custom_resume_name}.tex"
+                tex_path = output_dir / tex_filename
+                with open(tex_path, "w", encoding="utf-8") as f:
+                    f.write(opt_result.new_latex_code)
                 
-                st.write("Compiling PDF...")
-                # Note: Compiler path is hardcoded in original config, 
-                # we might need to assume it's in path or add to user config.
-                # using pdflatex from path for now.
-                import subprocess
-                cmd = ["pdflatex", "-interaction=nonstopmode", f"{st.session_state.custom_resume_name}.tex"]
-                subprocess.run(cmd, cwd=str(output_dir), capture_output=True)
+                compiler = LaTeXCompiler(output_dir)
+                success = compiler.compile(tex_filename)
                 
-                # GET METRICS
-                st.write("Calculating Scores...")
-                metrics = agent.get_ats_score(optimized_latex, st.session_state.job_description_text)
-                st.session_state.final_metrics = metrics
-                
-                st.write("Done!")
-                time.sleep(1)
-                machine.next("finished")
-                st.rerun()
-                
+                if success:
+                    machine.next("finished")
+                    st.success("Optimization finished successfully!")
+                    time.sleep(1)
+                    st.rerun()
+                else:
+                    st.error("LaTeX compilation failed. You can edit the code manually in the next step.")
+                    machine.next("finished") # Still proceed so they can fix LaTeX
+                    st.rerun()
+                    
             except Exception as e:
-                st.error(f"An error occurred: {e}")
-                # st.exception(e) # Debugging
-                if st.button("Back"):
-                    machine.state = "waiting_job_description"
+                st.error(f"Optimization failed: {e}")
+                if st.button("Back to Analysis"):
+                    machine.state = "reviewing_analysis"
                     st.rerun()
 
-                if st.button("Back"):
-                    machine.state = "waiting_job_description"
-                    st.rerun()
-
-    elif machine.state == "job_exploration": # Final state
-        st.header("📝 Resume Editor & Preview")
+    elif machine.state == "job_exploration":
+        st.header("📝 Final Optimized Resume")
         
-        # Load current files
+        opt_result = st.session_state.optimization_result
+        if opt_result:
+            st.success(f"Target ATS Score Reached: {opt_result.final_score}%")
+            with st.expander("Summary of Changes"):
+                for change in opt_result.summary:
+                    st.write(f"- {change}")
+
+        # Editor and Preview logic (simplified for here)
         tex_path = output_dir / f"{st.session_state.custom_resume_name}.tex"
         pdf_path = output_dir / f"{st.session_state.custom_resume_name}.pdf"
-        
-        # Ensure TeX exists in session for editing if not already
-        if "current_latex" not in st.session_state:
-            if tex_path.exists():
-                with open(tex_path, "r", encoding="utf-8") as f:
-                    st.session_state.current_latex = f.read()
-            else:
-                st.session_state.current_latex = ""
-        
-        col_preview, col_edit = st.columns([1, 1])
-        
-        # --- LEFT: PDF PREVIEW ---
-        with col_preview:
-            st.subheader("📄 Live Preview")
+
+        col_p, col_e = st.columns([1, 1])
+        with col_p:
             if pdf_path.exists():
                 import base64
                 with open(pdf_path, "rb") as f:
                     base64_pdf = base64.b64encode(f.read()).decode('utf-8')
-                pdf_display = f'<iframe src="data:application/pdf;base64,{base64_pdf}" width="100%" height="800" type="application/pdf"></iframe>'
-                st.markdown(pdf_display, unsafe_allow_html=True)
+                st.markdown(f'<iframe src="data:application/pdf;base64,{base64_pdf}" width="100%" height="800"></iframe>', unsafe_allow_html=True)
             else:
-                st.error("PDF not found. Try compiling.")
-        
-        # --- RIGHT: EDITOR & CHAT ---
-        with col_edit:
-            tab_edit, tab_chat = st.tabs(["✏️ Editor", "💬 AI Refinement"])
-            
-            # 1. MANUAL EDITOR
-            with tab_edit:
-                new_latex = st.text_area("LaTeX Source", value=st.session_state.current_latex, height=600)
-                st.session_state.current_latex = new_latex
-                
-                if st.button("⚡ Re-Compile PDF"):
-                    # Save TeX
-                    with open(tex_path, "w", encoding="utf-8") as f:
-                        f.write(st.session_state.current_latex)
-                    
-                    # Compile
-                    with st.spinner("Compiling..."):
-                        import subprocess
-                        subprocess.run(["pdflatex", "-interaction=nonstopmode", f"{st.session_state.custom_resume_name}.tex"], cwd=str(output_dir))
-                    st.success("Compiled!")
-                    st.rerun()
-                
-                # Download Buttons
-                with open(tex_path, "r", encoding="utf-8") as f:
-                    st.download_button("📥 Download TeX", f, file_name=f"{st.session_state.custom_resume_name}.tex")
-                if pdf_path.exists():
-                    with open(pdf_path, "rb") as f:
-                        st.download_button("📥 Download PDF", f, file_name=f"{st.session_state.custom_resume_name}.pdf")
+                st.info("PDF preview unavailable.")
 
-            # 2. CHAT REFINEMENT
-            with tab_chat:
-                st.warning("Chat with AI to refine your resume.")
-                
-                # Chat History Display
-                if "refinement_chat" not in st.session_state:
-                    st.session_state.refinement_chat = []
-                
-                for msg in st.session_state.refinement_chat:
-                    with st.chat_message(msg["role"]):
-                        st.write(msg["content"])
-                
-                # Input
-                if prompt := st.chat_input("E.g., 'Make the summary shorter'"):
-                    # User Msg
-                    st.session_state.refinement_chat.append({"role": "user", "content": prompt})
-                    with st.chat_message("user"):
-                        st.write(prompt)
-                    
-                    # AI Processing
-                    try:
-                        agent = LLMAgent(st.session_state.user_id, fm)
-                        with st.status("Refining Resume..."):
-                            updated_latex = agent.refine_latex(st.session_state.current_latex, prompt)
-                            
-                        # Update State
-                        # Clean markdown if LLM adds it
-                        updated_latex = updated_latex.replace("```latex", "").replace("```", "").strip()
-                        st.session_state.current_latex = updated_latex
-                        
-                        # Auto-save & Compile
-                        with open(tex_path, "w", encoding="utf-8") as f:
-                            f.write(updated_latex)
-                        import subprocess
-                        subprocess.run(["pdflatex", "-interaction=nonstopmode", f"{st.session_state.custom_resume_name}.tex"], cwd=str(output_dir))
-                        
-                        st.session_state.refinement_chat.append({"role": "assistant", "content": "I've updated the resume and re-compiled it for you!"})
-                        st.rerun()
-                        
-                    except Exception as e:
-                        st.error(f"Error refining: {e}")
+        with col_e:
+            with open(tex_path, "r", encoding="utf-8") as f:
+                content = f.read()
+            edited_tex = st.text_area("LaTeX Source", value=content, height=600)
             
-        if st.button("🔄 Start Over (New Job)"):
-            machine.reset()
-            # Clear specific keys
-            keys = ["refinement_chat", "current_latex", "last_selected_template"]
-            for k in keys:
-                if k in st.session_state:
-                    del st.session_state[k]
+            if st.button("💾 Re-compile"):
+                with open(tex_path, "w", encoding="utf-8") as f:
+                    f.write(edited_tex)
+                compiler = LaTeXCompiler(output_dir)
+                if compiler.compile(f"{st.session_state.custom_resume_name}.tex"):
+                    st.success("Re-compiled!")
+                    st.rerun()
+                else:
+                    st.error("Compilation failed.")
+
+        if st.button("🔄 Start New"):
+            machine.next("reset")
             st.rerun()
 
 # --- PAGE: HISTORY -----------------------------------
