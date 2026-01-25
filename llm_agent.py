@@ -65,12 +65,18 @@ class LLMAgent:
             raise ValueError(f"Unsupported provider: {provider}")
 
     def analyze_resume(self, resume_text: str, job_description: str) -> AnalysisResult:
-        """Step 1: Analyze resume against JD for keyword matching and scoring."""
-        system_prompt = """You are an Applicant Tracking System (ATS) used by Fortune-500 companies.
-Your task is to score how well a candidate’s resume matches a job description using the same logic as modern ATS platforms.
+        """Step 1: Calculate ATS Score & Get Suggestions."""
+        prompts = self.user_config.get("prompts", {})
+        
+        default_prompt = """You are an Applicant Tracking System (ATS) used by Fortune-500 companies.
+
+Your task is to score how well a candidate’s resume matches a job description using the same logic as modern ATS platforms (Workday, Greenhouse, Lever, iCIMS).
+
 You must analyze the resume exactly like an ATS parser would — keyword matching, semantic matching, experience relevance, and role fit — not like a human recruiter.
 
+--------------------------------
 SCORING METHODOLOGY (must follow strictly)
+
 Total Score = 100 points
 A. Keyword Match (40 points)
 B. Skill Coverage Depth (20 points)
@@ -78,55 +84,117 @@ C. Job Title & Role Match (10 points)
 D. Experience Relevance (15 points)
 E. Education & Domain Fit (5 points)
 F. ATS Parsability (10 points)
-"""
-        user_prompt = """RESUME_CODE (LaTeX):
+
+--------------------------------
+OUTPUT FORMAT (STRICT JSON — NO EXTRA TEXT)
+
+{
+  "ats_score": number between 0 and 100,
+  "missing_keywords": [
+     list of important skills or phrases in JOB_DESCRIPTION that are missing or weak in the resume
+  ],
+  "matched_keywords": [
+     list of important skills that were successfully matched
+  ],
+  "justification": {
+     "keyword_match": "...",
+     "skill_depth": "...",
+     "role_fit": "...",
+     "experience_relevance": "...",
+     "education_fit": "...",
+     "parsing_quality": "..."
+  }
+}
+
+--------------------------------
+INPUTS
+
+RESUME_CODE (LaTeX):
 {resume_text}
 
 JOB_DESCRIPTION:
 {job_description}
 """
+        
+        full_prompt_str = prompts.get("analyze_prompt") or default_prompt
+        
+        # Safe replacement to avoid issues with JSON/LaTeX braces
+        formatted_prompt = full_prompt_str.replace("{resume_text}", resume_text)
+        formatted_prompt = formatted_prompt.replace("{job_description}", job_description)
+        # Also support double braces if user typed them
+        formatted_prompt = formatted_prompt.replace("{{resume_text}}", resume_text)
+        formatted_prompt = formatted_prompt.replace("{{job_description}}", job_description)
+
         prompt = ChatPromptTemplate.from_messages([
-            ("system", system_prompt),
-            ("user", user_prompt)
+            ("user", "{user_payload}")
         ])
 
         # Use structured output
         chain = prompt | self.llm.with_structured_output(AnalysisResult)
-        return chain.invoke({"resume_text": resume_text, "job_description": job_description})
+        return chain.invoke({"user_payload": formatted_prompt})
 
     def optimize_resume(self, analysis: AnalysisResult, resume_text: str, linkedin_text: str, job_description: str) -> OptimizationResult:
-        """Step 2: Tailor the resume based on the analysis and additional info."""
-        system_prompt = """You are an ATS-optimization engine used by Big Tech recruiting platforms.
+        """Step 2: Resume Tailoring & Optimization."""
+        prompts = self.user_config.get("prompts", {})
+
+        default_prompt = """You are an ATS-optimization engine used by Big Tech recruiting platforms.
+
 Your task is to rewrite a LaTeX resume so that its ATS score becomes at least 90% for a given job description, while preserving structure, honesty, and formatting.
 
+--------------------------------
 STRICT RULES
-1) DO NOT change the section structure or delete existing skills.
-2) YOU MUST add all missing_keywords into appropriate places (Skills, Experience, Projects).
-3) The resume must remain technically believable and internally consistent.
-4) Increase keyword frequency and skill coverage.
+1) DO NOT: change section structure, remove existing sections, or rename headers.
+2) YOU MUST: Add missing keywords to Skills, Experience, and Projects.
+3) If a core skill is missing, enhance bullets with relevant frameworks (e.g., Java -> Spring Boot).
 
-OPTIMIZATION TARGET: final_score >= 90
-"""
-        user_prompt = """initial_ats_score: {initial_ats_score}
+--------------------------------
+REQUIRED OUTPUT (JSON — NO EXTRA TEXT)
+{
+  "final_score": number between 0 and 100,
+  "new_latex_code": "FULL optimized LaTeX resume",
+  "summary": [
+     "Added 'Next.js' to skills",
+     "Updated project description"
+  ]
+}
+
+--------------------------------
+INPUTS
+initial_ats_score: {initial_ats_score}
 missing_keywords: {missing_keywords}
 matched_keywords: {matched_keywords}
 justification: {justification}
 job_description: {job_description}
 old_resume_code (LaTeX): {resume_text}
-linkedin_profile: {linkedin_text}
 """
+        full_prompt_str = prompts.get("optimize_prompt") or default_prompt
+        
+        # Safe replacement to avoid issues with JSON/LaTeX braces
+        replacements = {
+            "{initial_ats_score}": str(analysis.ats_score),
+            "{missing_keywords}": ", ".join(analysis.missing_keywords),
+            "{matched_keywords}": ", ".join(analysis.matched_keywords),
+            "{justification}": json.dumps(analysis.justification.model_dump()),
+            "{job_description}": job_description,
+            "{resume_text}": resume_text,
+            # Support double braces too
+            "{{initial_ats_score}}": str(analysis.ats_score),
+            "{{missing_keywords}}": ", ".join(analysis.missing_keywords),
+            "{{matched_keywords}}": ", ".join(analysis.matched_keywords),
+            "{{justification}}": json.dumps(analysis.justification.model_dump()),
+            "{{job_description}}": job_description,
+            "{{resume_text}}": resume_text,
+        }
+        
+        formatted_prompt = full_prompt_str
+        for key, val in replacements.items():
+            formatted_prompt = formatted_prompt.replace(key, val)
+
         prompt = ChatPromptTemplate.from_messages([
-            ("system", system_prompt),
-            ("user", user_prompt)
+            ("user", "{user_payload}")
         ])
 
         chain = prompt | self.llm.with_structured_output(OptimizationResult)
         return chain.invoke({
-            "initial_ats_score": analysis.ats_score,
-            "missing_keywords": ", ".join(analysis.missing_keywords),
-            "matched_keywords": ", ".join(analysis.matched_keywords),
-            "justification": json.dumps(analysis.justification.model_dump()),
-            "job_description": job_description,
-            "resume_text": resume_text,
-            "linkedin_text": linkedin_text
+            "user_payload": formatted_prompt
         })

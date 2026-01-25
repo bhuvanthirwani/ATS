@@ -1,7 +1,7 @@
 import os
 import json
 import pathlib
-import fitz  # pymupdf
+import pypdf
 
 # --- FILE BASED ARCHITECTURE ---
 
@@ -10,7 +10,7 @@ class FileManager:
         self.project_root = pathlib.Path(project_root)
         self.users_dir = self.project_root / "users"
         self.configs_dir = self.project_root / "configs"
-        self.catalog_path = self.configs_dir / "llms.json"
+        self.catalog_path = self.project_root / "llms.json"
         
         # Ensure base directories exist
         self.users_dir.mkdir(exist_ok=True)
@@ -99,17 +99,16 @@ def extract_text_from_pdf(file_input):
     """Extracts text from a PDF file path or uploaded file object."""
     try:
         if isinstance(file_input, (str, pathlib.Path)):
-            doc = fitz.open(str(file_input))
+            reader = pypdf.PdfReader(str(file_input))
         else:
             # Streamlit uploaded file
             file_input.seek(0)
-            file_bytes = file_input.getvalue()
-            doc = fitz.open(stream=file_bytes, filetype="pdf")
+            reader = pypdf.PdfReader(file_input)
             
         text = ""
-        for page in doc:
-            text += page.get_text()
-        return text.encode("utf-8", errors="replace").decode("utf-8")
+        for page in reader.pages:
+            text += page.extract_text() or ""
+        return text
     except Exception as e:
         print(f"Error extracting PDF text: {e}")
         return "" # Return empty string instead of crashing

@@ -27,3 +27,6 @@ DB/postgres_data/
 .vscode/
 *.swp
 *.swo
+
+users/*
+configs/*

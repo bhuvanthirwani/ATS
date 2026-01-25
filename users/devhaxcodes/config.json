@@ -1,19 +1,12 @@
 {
-    "selected_llm_id": "fb905fa2-7e88-4a50-9012-b60fa4a31374",
+    "selected_llm_id": "2fb4d0fc-12db-47e2-b06c-390cfd786737",
     "prompts": {
-        "optimize_system": "You are a professional career assistant and LaTeX expert... {resume_text} {resume_text} {resume_text} {resume_text} {linkedin_text} {latex_template}",
-        "optimize_user": "Optimize this LaTeX template for the following Job Description...",
-        "chat_system": "You are a helpful assistant specialized in career assistance..."
+        "optimize_system": "",
+        "optimize_user": "",
+        "chat_system": "",
+        "optimize_prompt": "You are an ATS-optimization engine used by Big Tech recruiting platforms.\n\nYour task is to rewrite a LaTeX resume so that its ATS score becomes at least 90% for a given job description, while preserving structure, honesty, and formatting.\n\n--------------------------------\nSTRICT RULES\n1) DO NOT: change section structure, remove existing sections, or rename headers.\n2) YOU MUST: Add missing keywords to Skills, Experience, and Projects.\n3) If a core skill is missing, enhance bullets with relevant frameworks (e.g., Java -> Spring Boot).\n\n--------------------------------\nREQUIRED OUTPUT (JSON \u2014 NO EXTRA TEXT)\n{\n  \"final_score\": number between 0 and 100,\n  \"new_latex_code\": \"FULL optimized LaTeX resume\",\n  \"summary\": [\n     \"Added 'Next.js' to skills\",\n     \"Updated project description\"\n  ]\n}\n\n--------------------------------\nINPUTS\ninitial_ats_score: {initial_ats_score}\nmissing_keywords: {missing_keywords}\nmatched_keywords: {matched_keywords}\njustification: {justification}\njob_description: {job_description}\nold_resume_code (LaTeX): {resume_text}"
     },
     "llm_inventory": [
-        {
-            "id": "fb905fa2-7e88-4a50-9012-b60fa4a31374",
-            "sdk_id": "a1b2c3d4-e5f6-7g8h-9i0j-k1l2m3n4o5p6",
-            "plan_type": "free",
-            "name": "Google Gemini 3.0 Flash Preview",
-            "api_key": "AIzaSyB2JSDqZhPMROCO07LsGapCN3gtttudi84",
-            "tokens_used_today": 0,
-            "last_used_at": null
-        }
+        
     ]
 }

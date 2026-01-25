@@ -6,7 +6,7 @@ import json
 import uuid
 from file_management import FileManager, extract_text_from_file
 from state_machine import ResumeOptimizerStateMachine
-from llm_agent import LLMAgent, LLM_Chat
+from llm_agent import LLMAgent
 
 # --- PAGE CONFIG -------------------------------------
 st.set_page_config(
@@ -20,63 +20,87 @@ st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600&display=swap');
     
+    :root {
+        --primary: #06b6d4;
+        --secondary: #8b5cf6;
+        --background: #0f172a;
+        --surface: rgba(30, 41, 59, 0.5);
+        --text: #f8fafc;
+    }
+
     html, body, [data-testid="stAppViewBlockContainer"] {
         font-family: 'Outfit', sans-serif;
-        background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
-        color: #f8fafc;
+        background: radial-gradient(circle at top right, #1e1b4b 0%, #0f172a 100%);
+        color: var(--text);
+        font-size: 0.85rem !important; /* Global Font Size Reduction */
     }
     
     .main { background: transparent; }
     
     [data-testid="stHeader"] {
-        background: rgba(15, 23, 42, 0.8);
-        backdrop-filter: blur(10px);
+        background: rgba(15, 23, 42, 0.4);
+        backdrop-filter: blur(12px);
     }
     
+    /* Global Heading Scale Down */
+    h1 { font-size: 1.8rem !important; }
+    h2 { font-size: 1.4rem !important; }
+    h3 { font-size: 1.1rem !important; }
+    
     .stButton>button {
-        border-radius: 12px;
-        background: linear-gradient(90deg, #3b82f6 0%, #2563eb 100%) !important;
+        border-radius: 10px;
+        background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%) !important;
         color: white !important;
         border: none !important;
-        padding: 0.6rem 1.5rem !important;
+        padding: 0.4rem 1rem !important; /* Tighter Padding */
         font-weight: 600 !important;
-        transition: all 0.3s ease !important;
-        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        font-size: 0.8rem !important; /* Smaller Button Font */
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+        box-shadow: 0 4px 10px rgba(6, 182, 212, 0.15);
         width: 100%;
+        text-transform: none;
+        letter-spacing: 0.2px;
     }
     
     .stButton>button:hover {
         transform: translateY(-2px);
-        box-shadow: 0 10px 15px -3px rgba(59, 130, 246, 0.4) !important;
+        box-shadow: 0 8px 20px rgba(139, 92, 246, 0.3) !important;
     }
     
-    .glass-card {
-        background: rgba(30, 41, 59, 0.4);
-        backdrop-filter: blur(12px);
-        border: 1px solid rgba(255, 255, 255, 0.05);
-        border-radius: 20px;
-        padding: 2rem;
-        margin-bottom: 2rem;
-        box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+    /* Specific styling for placeholder buttons */
+    section[data-testid="stVerticalBlock"] div[data-testid="stColumn"] button {
+        font-size: 0.7rem !important;
+        padding: 0.2rem 0.6rem !important;
+    }
+
+    /* Glass Cards */
+    [data-testid="stVerticalBlockBorderWrapper"] {
+        background: var(--surface);
+        backdrop-filter: blur(16px);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 16px; /* Smaller radius */
+        padding: 1rem !important; /* Less padding */
+        box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
+        transition: transform 0.3s ease;
+        margin-bottom: 0.75rem;
     }
     
-    /* Animation */
-    @keyframes fadeIn {
-        from { opacity: 0; transform: translateY(10px); }
+    /* Metric Styling */
+    [data-testid="stMetricValue"] {
+        background: linear-gradient(90deg, var(--primary), var(--secondary));
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        font-weight: 800 !important;
+        font-size: 2rem !important; /* Smaller Metric */
+    }
+    
+    /* Animations */
+    @keyframes slideUp {
+        from { opacity: 0; transform: translateY(20px); }
         to { opacity: 1; transform: translateY(0); }
     }
-    .fade-in {
-        animation: fadeIn 0.8s ease-out;
-    }
-    
-    /* Native Container Styling to replace glass-card */
-    [data-testid="stVerticalBlockBorderWrapper"] {
-        background: rgba(30, 41, 59, 0.4);
-        backdrop-filter: blur(12px);
-        border: 1px solid rgba(255, 255, 255, 0.05);
-        border-radius: 20px;
-        padding: 1rem;
-        box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+    .stVerticalBlock {
+        animation: slideUp 0.6s ease-out;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -157,22 +181,28 @@ if "logger" not in st.session_state:
 
 # --- LOGIN SCREEN ------------------------------------
 if not st.session_state.user_id:
-    
-    st.markdown("<br><br><br>", unsafe_allow_html=True)
-    with st.container(border=True):
-        st.title("🔐 ATS Access Portal")
-        st.markdown("Enter your User ID to load your workspace.")
-        
-        uid_input = st.text_input("User ID", placeholder="e.g. jdoe")
-        
-        if st.button("🚀 Enter Workspace"):
-            if uid_input.strip():
-                st.session_state.user_id = uid_input.strip()
-                fm.ensure_user_structure(st.session_state.user_id)
-                st.success(f"Welcome, {st.session_state.user_id}!")
-                st.rerun()
-            else:
-                st.error("Please enter a User ID.")
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        st.markdown("<br><br>", unsafe_allow_html=True)
+        with st.container(border=True):
+            st.markdown("""
+                <div style='text-align: center;'>
+                    <h1 style='background: linear-gradient(90deg, #06b6d4, #8b5cf6); -webkit-background-clip: text; -webkit-text-fill-color: transparent; font-size: 3rem;'>ATS AGENT</h1>
+                    <p style='color: #94a3b8; font-size: 1.1rem;'>The Ultimate Resume Tailoring Engine</p>
+                </div>
+            """, unsafe_allow_html=True)
+            
+            uid_input = st.text_input("User ID", placeholder="Enter your unique workspace ID...")
+            
+            if st.button("✨ Initialize Workspace"):
+                if uid_input.strip():
+                    st.session_state.user_id = uid_input.strip()
+                    fm.ensure_user_structure(st.session_state.user_id)
+                    st.success(f"Workspace {st.session_state.user_id} Ready!")
+                    time.sleep(1)
+                    st.rerun()
+                else:
+                    st.error("Please provide a User ID to continue.")
     st.stop()
 
 # --- MAIN APP LOGIC ----------------------------------
@@ -189,20 +219,23 @@ machine = st.session_state.machine
 
 # Sidebar Navigation
 with st.sidebar:
-    st.image("https://img.icons8.com/?size=100&id=12150&format=png&color=000000", width=80)
-    st.title(f"ATS Agent")
-    st.caption(f"User: {st.session_state.user_id}")
+    st.markdown("""
+        <div style='text-align: center; padding: 1rem;'>
+            <h2 style='background: linear-gradient(90deg, #06b6d4, #8b5cf6); -webkit-background-clip: text; -webkit-text-fill-color: transparent;'>CORE NAVIGATION</h2>
+        </div>
+    """, unsafe_allow_html=True)
     
-    page = st.radio("Navigation", ["Dashboard", "Profiles", "Settings", "History"], index=0)
+    page = st.radio("Access Portals", ["📊 Dashboard", "📂 Profiles", "⚙️ Settings", "📜 History"], index=0)
     
     st.divider()
-    if st.button("🚪 Logout"):
+    st.caption(f"Logged in as: **{st.session_state.user_id}**")
+    if st.button("🚪 Leave Workspace"):
         st.session_state.user_id = None
         st.session_state.machine = ResumeOptimizerStateMachine() # Reset machine
         st.rerun()
 
 # --- PAGE: SETTINGS ----------------------------------
-if page == "Settings":
+if "Settings" in page:
     st.header("⚙️ Configuration")
     
     tab1, tab2, tab3 = st.tabs(["🧠 AI Models", "📦 LLM Inventory", "📝 Prompts"])
@@ -268,46 +301,137 @@ if page == "Settings":
         
         prompts = user_config.get("prompts", {})
         
-        # Define Known Prompt Keys with Defaults
+        # Define Simplified Prompt Keys with Defaults
         DEFAULT_PROMPTS = {
-            "optimize_system": "You are a professional career assistant and LaTeX expert...",
-            "optimize_user": "Optimize this LaTeX template for the following Job Description...",
-            "chat_system": "You are a helpful assistant specialized in career assistance...",
+            "analyze_prompt": """You are an Applicant Tracking System (ATS) used by Fortune-500 companies.
+
+Your task is to score how well a candidate’s resume matches a job description using the same logic as modern ATS platforms (Workday, Greenhouse, Lever, iCIMS).
+
+You must analyze the resume exactly like an ATS parser would — keyword matching, semantic matching, experience relevance, and role fit — not like a human recruiter.
+
+--------------------------------
+SCORING METHODOLOGY (must follow strictly)
+
+Total Score = 100 points
+A. Keyword Match (40 points)
+B. Skill Coverage Depth (20 points)
+C. Job Title & Role Match (10 points)
+D. Experience Relevance (15 points)
+E. Education & Domain Fit (5 points)
+F. ATS Parsability (10 points)
+
+--------------------------------
+OUTPUT FORMAT (STRICT JSON — NO EXTRA TEXT)
+
+{
+  "ats_score": number between 0 and 100,
+  "missing_keywords": [
+     list of important skills or phrases in JOB_DESCRIPTION that are missing or weak in the resume
+  ],
+  "matched_keywords": [
+     list of important skills that were successfully matched
+  ],
+  "justification": {
+     "keyword_match": "...",
+     "skill_depth": "...",
+     "role_fit": "...",
+     "experience_relevance": "...",
+     "education_fit": "...",
+     "parsing_quality": "..."
+  }
+}
+
+--------------------------------
+INPUTS
+
+RESUME_CODE (LaTeX):
+{resume_text}
+
+JOB_DESCRIPTION:
+{job_description}""",
+            "optimize_prompt": """You are an ATS-optimization engine used by Big Tech recruiting platforms.
+
+Your task is to rewrite a LaTeX resume so that its ATS score becomes at least 90% for a given job description, while preserving structure, honesty, and formatting.
+
+--------------------------------
+STRICT RULES
+1) DO NOT: change section structure, remove existing sections, or rename headers.
+2) YOU MUST: Add missing keywords to Skills, Experience, and Projects.
+3) If a core skill is missing, enhance bullets with relevant frameworks (e.g., Java -> Spring Boot).
+
+--------------------------------
+REQUIRED OUTPUT (JSON — NO EXTRA TEXT)
+{
+  "final_score": number between 0 and 100,
+  "new_latex_code": "FULL optimized LaTeX resume",
+  "summary": [
+     "Added 'Next.js' to skills",
+     "Updated project description"
+  ]
+}
+
+--------------------------------
+INPUTS
+initial_ats_score: {initial_ats_score}
+missing_keywords: {missing_keywords}
+matched_keywords: {matched_keywords}
+justification: {justification}
+job_description: {job_description}
+old_resume_code (LaTeX): {resume_text}"""
         }
         
-        placeholders = ["{resume_text}", "{linkedin_text}", "{job_description}", "{latex_template}"]
+        prompt_metadata = {
+            "analyze_prompt": {
+                "title": "📊 Step 1: Calculate ATS Score & Recommendations",
+                "description": "Analyze the Resume against the Job Description. Requires valid JSON output.",
+                "placeholders": ["{resume_text}", "{job_description}"]
+            },
+            "optimize_prompt": {
+                "title": "🛠️ Step 2: Resume Tailoring & Optimization",
+                "description": "Rewrite the LaTeX code to optimize for keywords and score. Requires JSON with new LaTeX.",
+                "placeholders": [
+                    "{resume_text}", "{job_description}", "{initial_ats_score}", 
+                    "{missing_keywords}", "{matched_keywords}", "{justification}"
+                ]
+            }
+        }
         
-        for key, default_val in DEFAULT_PROMPTS.items():
-            st.markdown(f"**{key.replace('_', ' ').title()}**")
+        for key, meta in prompt_metadata.items():
+            st.markdown(f"## {meta['title']}")
+            st.info(meta['description'])
             
-            # Placeholder Buttons Row
-            cols = st.columns(len(placeholders))
-            for idx, ph in enumerate(placeholders):
-                if cols[idx].button(f"➕ {ph}", key=f"btn_{key}_{idx}"):
-                    prompts[key] = prompts.get(key, default_val) + " " + ph
-                    # No need to rerun, text area will pick up updated dict value if rerendered, 
-                    # strictly speaking we might need to rerun to refresh the text_area value if it uses value=...
-                    # Let's verify: Streamlit text_area with `value` doesn't auto-update if key exists unless we wipe it?
-                    # Better approach: We update the prompt in config and st.rerun() to reflect change in text_area
+            # Compact Placeholder Buttons
+            st.caption("Available Variables (Click to insert):")
+            # Use small chunks for columns to keep buttons tight
+            ph_cols = st.columns(min(len(meta['placeholders']), 4))
+            for idx, ph in enumerate(meta['placeholders']):
+                col_idx = idx % len(ph_cols)
+                if ph_cols[col_idx].button(f" {ph} ", key=f"btn_{key}_{idx}"):
+                    current = prompts.get(key, DEFAULT_PROMPTS[key])
+                    prompts[key] = current + " " + ph
                     user_config['prompts'] = prompts
                     fm.save_user_config(st.session_state.user_id, user_config)
                     st.rerun()
 
-            current_val = prompts.get(key, default_val)
-            new_val = st.text_area(f"Edit {key}", value=current_val, height=150, key=f"prompt_{key}")
-            prompts[key] = new_val
+            current_val = prompts.get(key, DEFAULT_PROMPTS[key])
+            new_val = st.text_area("Template Editor", value=current_val, height=350, key=f"prompt_input_{key}")
+            if new_val != current_val:
+                prompts[key] = new_val
+                user_config['prompts'] = prompts
             st.divider()
             
-        if st.button("💾 Save All Prompts"):
+        if st.button("💎 Save All Prompt Configurations"):
             user_config['prompts'] = prompts
             fm.save_user_config(st.session_state.user_id, user_config)
-            st.success("Prompts saved!")
+            st.success("All configurations saved successfully!")
+            time.sleep(1)
+            st.rerun()
 
         
 
 
 # --- PAGE: PROFILES (MANAGE FILES) --------------------
-elif page == "Profiles":
+elif "Profiles" in page:
     st.header("📂 File Management")
     
     templates_dir = user_dir / "templates"
@@ -376,7 +500,7 @@ elif page == "Profiles":
                 st.rerun()
 
 # --- PAGE: DASHBOARD (MAIN APP) ----------------------
-elif page == "Dashboard":
+elif "Dashboard" in page:
     from compiler import LaTeXCompiler
     
     # Ensure directories
@@ -580,7 +704,7 @@ elif page == "Dashboard":
             st.rerun()
 
 # --- PAGE: HISTORY -----------------------------------
-elif page == "History":
+elif "History" in page:
     st.header("📜 Resume History")
     output_dir = user_dir / "output"
     files = list(output_dir.glob("*.pdf"))
