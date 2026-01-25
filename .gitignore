@@ -30,3 +30,5 @@ DB/postgres_data/
 
 users/*
 configs/*
+
+*config.json
