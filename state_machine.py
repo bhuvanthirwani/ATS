@@ -6,13 +6,22 @@ class ResumeOptimizerStateMachine:
                 "select_user": ("waiting_job_description", "User setup finished."),
             },
             "waiting_job_description": {
-                "job_description_uploaded": ("processing_llm", "Job description selected. Starting processing..."),
+                "submit_jd": ("analyzing", "Analyzing resume against job description..."),
             },
-            "processing_llm": {
-                "finished": ("job_exploration", "Loading..."),
+            "analyzing": {
+                "analysis_complete": ("reviewing_analysis", "Analysis complete. Review keywords and scores."),
+                "error": ("waiting_job_description", "Analysis failed."),
+            },
+            "reviewing_analysis": {
+                "start_optimization": ("optimizing", "Optimizing resume based on analysis..."),
+                "back": ("waiting_job_description", "Returning to JD input."),
+            },
+            "optimizing": {
+                "finished": ("job_exploration", "Optimization complete!"),
+                "error": ("reviewing_analysis", "Optimization failed."),
             },
             "job_exploration": {
-                "menu": ("start", "Loading the system again"),
+                "reset": ("waiting_job_description", "Starting over..."),
             }
         }
 
