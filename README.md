@@ -1,19 +1,23 @@
+# <p align="center">🚀 ATS Resume Optimizer & Tailor Agent</p>
 
-<div align="center">
+<p align="center">
+  <img src="https://img.shields.io/badge/Python-3.10+-3776AB?style=for-the-badge&logo=python&logoColor=white" alt="Python" />
+  <img src="https://img.shields.io/badge/Streamlit-FF4B4B?style=for-the-badge&logo=Streamlit&logoColor=white" alt="Streamlit" />
+  <img src="https://img.shields.io/badge/LangChain-1C3C3C?style=for-the-badge&logo=langchain&logoColor=white" alt="LangChain" />
+  <img src="https://img.shields.io/badge/Google_Gemini-8E75B2?style=for-the-badge&logo=googlegemini&logoColor=white" alt="Gemini" />
+  <img src="https://img.shields.io/badge/OpenAI-412991?style=for-the-badge&logo=openai&logoColor=white" alt="OpenAI" />
+</p>
 
-# 🚀 ATS Resume Optimzer & Tailor Agent
+---
 
-[![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://streamlit.io/)
-[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Powered by LangChain](https://img.shields.io/badge/Powered%20by-LangChain-orange)](https://langchain.com/)
-
-**The Ultimate AI-Powered Career Assistant**  
-*Tailor your resume to any job description in seconds using State-of-the-Art LLMs.*
-
-[Features](#-key-features) • [Quick Start](#-quick-start) • [Configuration](#-configuration) • [Models](#-supported-models)
-
-</div>
+<p align="center">
+  <b>The Ultimate AI-Powered Career Assistant</b><br>
+  <i>Tailor your resume to any job description in seconds using State-of-the-Art LLMs.</i><br><br>
+  <a href="#-key-features">Features</a> • 
+  <a href="#-tech-stack">Tech Stack</a> • 
+  <a href="#-quick-start">Quick Start</a> • 
+  <a href="#-architecture">Architecture</a>
+</p>
 
 ---
 
@@ -23,22 +27,34 @@
 
 Built with **Streamlit** and **LangChain**, it leverages powerful models like **Google Gemini Pro** and **GPT-4o** to re-write content, optimize keywords, and generate professional LaTeX documents automatically.
 
+---
+
 ## ✨ Key Features
 
-### 🧠 Intelligent Optimization
-- **Multi-Model Support**: Use Google Gemini (Flash/Pro), GPT-4o, Claude 3.5 Sonnet, and more.
-- **Context-Aware Rewriting**: The AI understands your experience and the job requirements to highlight the *right* skills.
-- **ATS Scoring**: Get instant feedback on how well your resume matches the job.
+| 🧠 **Intelligent Optimization** | 🎨 **Premium Experience** | 🛠️ **Total Control** |
+| :--- | :--- | :--- |
+| **Multi-Model Support**: Use Gemini, GPT-4o, Claude, and more. | **Glassmorphism UI**: Modern, focused, and intuitive dashboard. | **Prompt Engineering**: Edit system prompts directly from the UI. |
+| **Context-Aware Rewriting**: AI highlights the *right* skills for each JD. | **Multi-User Workspace**: Private logins for profiles and templates. | **Model Inventory**: Manage your own API keys and provider list. |
+| **ATS Scoring**: Get instant feedback on your resume's match percentage. | **History Tracking**: Access all past generations in one central place. | **Template Management**: Upload and manage custom LaTeX templates. |
 
-### 🎨 Premium User Experience
-- **Multi-User Workspace**: Personal login separates your profiles, templates, and history.
-- **Visual Dashboard**: Glassmorphism UI for a modern, focused usage.
-- **History Tracking**: Never lose a tailored resume; access all your past generations in one place.
+---
 
-### 🛠️ Total Control
-- **Prompt Engineering UI**: Edit the exact system prompts used by the AI directly from the settings.
-- **Model Inventory**: Manage your own API keys and choose from a vast catalog of supported models.
-- **Template Management**: Upload your own LaTeX templates or use built-in ones.
+## 💻 Tech Stack
+
+### Frameworks & Libraries
+<p>
+  <img src="https://img.shields.io/badge/Streamlit-FF4B4B?style=flat-square&logo=Streamlit&logoColor=white" />
+  <img src="https://img.shields.io/badge/LangChain-1C3C3C?style=flat-square&logo=langchain&logoColor=white" />
+  <img src="https://img.shields.io/badge/Pydantic-E92063?style=flat-square&logo=pydantic&logoColor=white" />
+  <img src="https://img.shields.io/badge/Python-3776AB?style=flat-square&logo=python&logoColor=white" />
+</p>
+
+### AI & LLM Providers
+<p>
+  <img src="https://img.shields.io/badge/Google_Gemini-8E75B2?style=flat-square&logo=googlegemini&logoColor=white" />
+  <img src="https://img.shields.io/badge/OpenAI_GPT--4o-412991?style=flat-square&logo=openai&logoColor=white" />
+  <img src="https://img.shields.io/badge/Anthropic_Claude-D97757?style=flat-square&logo=anthropic&logoColor=white" />
+</p>
 
 ---
 
@@ -50,7 +66,6 @@ Built with **Streamlit** and **LangChain**, it leverages powerful models like **
 git clone https://github.com/bhuvanthirwani/ATS.git
 cd ATS
 pip install -r requirements.txt
-pip install langchain-google-genai langchain-openai
 ```
 
 ### 2. Run the App
@@ -66,32 +81,28 @@ Enter any unique **User ID** (e.g., `jdoe`) to create your private workspace.
 
 ## 📸 Architecture
 
-### File-Based Persistence
+### Data Flow & Persistence
 All user data is stored locally for privacy and portability:
 
-```text
-users/
-├── jdoe/
-│   ├── config.json         # Your preferences & model keys
-│   ├── linkedin_profiles/  # Uploaded PDF profiles
-│   ├── templates/          # LaTeX templates
-│   └── output/             # Generated Resumes
+```mermaid
+graph TD
+    A[User Profile] --> B[LLM Optimization]
+    B --> C[LaTeX Compilation]
+    C --> D[Final PDF Output]
+    
+    subgraph Storage
+    E[configs/llms.json]
+    F[users/user_id/config.json]
+    G[users/user_id/output/]
+    end
 ```
-
-### Dynamic Model Catalog
-Connect to **Google Gemini**, **OpenAI**, or **OpenRouter** seamlessly through the `configs/llms.json` catalog.
 
 ---
 
-## 💎 Supported Models
+## 👤 Author
 
-| Provider | Model | Special Features |
-|:---|:---|:---|
-| **Google** | Gemini 2.0 Flash | Fast, long context, multimodal |
-| **Google** | Gemini 2.5 Pro | High reasoning capability |
-| **OpenRouter** | GPT-4o | Best-in-class instruction following |
-| **OpenRouter** | Claude 3.5 Sonnet | Natural writing style |
-| **OpenRouter** | Llama 3.1 405B | Open source giant |
+**Bhuvan Thirwani**  
+*Full Stack AI Developer*
 
 ---
 
