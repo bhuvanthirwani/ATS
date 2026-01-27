@@ -11,6 +11,11 @@ try:
 except ImportError:
     ChatGoogleGenerativeAI = None
 
+try:
+    from mistralai import Mistral
+except ImportError:
+    Mistral = None
+
 from models import AnalysisResult, OptimizationResult
 
 class LLMAgent:
@@ -32,6 +37,7 @@ class LLMAgent:
         provider = model_config.get("provider")
         api_key = model_config.get("api_key")
         model_name = model_config.get("model_name")
+        self.model_name = model_name
         base_url = model_config.get("base_url")
 
         if provider == "google":
@@ -60,6 +66,11 @@ class LLMAgent:
                 temperature=0.1,
                 default_headers=extra_headers if extra_headers else None
             )
+
+        elif provider == "mistral":
+            if not Mistral:
+                raise ImportError("mistralai not installed. Run `pip install mistralai`.")
+            return Mistral(api_key=api_key)
 
         else:
             raise ValueError(f"Unsupported provider: {provider}")
@@ -129,6 +140,31 @@ JOB_DESCRIPTION:
             ("user", "{user_payload}")
         ])
 
+        # Mistral Handling
+        if Mistral and isinstance(self.llm, Mistral):
+             messages = [
+                {
+                    "content": formatted_prompt,
+                    "role": "user",
+                },
+            ]
+             resp = self.llm.chat.complete(
+                model=self.model_name,
+                messages=messages,
+                response_format={
+                    "type": "json_schema",
+                    "json_schema": {
+                        "name": "AnalysisResult",
+                        "schema": AnalysisResult.model_json_schema(),
+                        "strict": True
+                    }
+                },
+                temperature=0.1
+            )
+             # Parse result
+             content = resp.choices[0].message.content
+             return AnalysisResult.model_validate_json(content)
+
         # Use structured output
         chain = prompt | self.llm.with_structured_output(AnalysisResult)
         return chain.invoke({"user_payload": formatted_prompt})
@@ -137,7 +173,7 @@ JOB_DESCRIPTION:
         """Step 2: Resume Tailoring & Optimization."""
         prompts = self.user_config.get("prompts", {})
 
-        default_prompt = """You are an ATS-optimization engine used by Big Tech recruiting platforms.
+        default_prompt = r"""You are an ATS-optimization engine used by Big Tech recruiting platforms.
 
 Your task is to rewrite a LaTeX resume so that its ATS score becomes at least 90% for a given job description, while preserving structure, honesty, and formatting.
 
@@ -146,7 +182,7 @@ STRICT RULES
 1) DO NOT: change section structure, remove existing sections, or rename headers.
 2) YOU MUST: Add missing keywords to Skills, Experience, and Projects.
 3) If a core skill is missing, enhance bullets with relevant frameworks (e.g., Java -> Spring Boot).
-
+4) If & or % is written in latex code, replace with \&  and \% as these punctuations throws error in Latex.
 --------------------------------
 REQUIRED OUTPUT (JSON — NO EXTRA TEXT)
 {
@@ -193,6 +229,31 @@ old_resume_code (LaTeX): {resume_text}
         prompt = ChatPromptTemplate.from_messages([
             ("user", "{user_payload}")
         ])
+
+        # Mistral Handling
+        if Mistral and isinstance(self.llm, Mistral):
+             messages = [
+                {
+                    "content": formatted_prompt,
+                    "role": "user",
+                },
+            ]
+             resp = self.llm.chat.complete(
+                model=self.model_name,
+                messages=messages,
+                response_format={
+                    "type": "json_schema",
+                    "json_schema": {
+                        "name": "OptimizationResult",
+                        "schema": OptimizationResult.model_json_schema(),
+                        "strict": True
+                    }
+                },
+                temperature=0.1
+            )
+             # Parse result
+             content = resp.choices[0].message.content
+             return OptimizationResult.model_validate_json(content)
 
         chain = prompt | self.llm.with_structured_output(OptimizationResult)
         return chain.invoke({
