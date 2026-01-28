@@ -83,44 +83,6 @@ ufw allow 443
 # If you want direct access, allow 8501: ufw allow 8501
 ufw --force enable
 
-# -----------------------------
-# Nginx Reverse Proxy
-# -----------------------------
-
-echo "🌐 Configuring Nginx reverse proxy..."
-
-rm -f /etc/nginx/sites-enabled/default
-
-cat <<EOF >/etc/nginx/sites-available/ats
-server {
-    listen 80;
-    server_name _;
-
-    location / {
-        proxy_pass http://127.0.0.1:8501;
-        proxy_http_version 1.1;
-
-        proxy_set_header Upgrade \$http_upgrade;
-        proxy_set_header Connection 'upgrade';
-        proxy_set_header Host \$host;
-        proxy_cache_bypass \$http_upgrade;
-        
-        # Increase timeout for long LLM responses
-        proxy_read_timeout 300s;
-        proxy_connect_timeout 300s;
-        proxy_send_timeout 300s;
-    }
-}
-EOF
-
-ln -sf /etc/nginx/sites-available/ats /etc/nginx/sites-enabled/
-
-nginx -t
-systemctl restart nginx
-
-# -----------------------------
-# Finished
-# -----------------------------
 
 echo ""
 echo "✅ Setup Complete!"
