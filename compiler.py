@@ -8,8 +8,9 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("LaTeXCompiler")
 
 class LaTeXCompiler:
-    def __init__(self, output_dir: pathlib.Path):
+    def __init__(self, output_dir: pathlib.Path, compiler_path: str = "pdflatex"):
         self.output_dir = output_dir
+        self.compiler_path = compiler_path
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
     def compile(self, tex_filename: str, timeout: int = 30) -> bool:
@@ -27,7 +28,7 @@ class LaTeXCompiler:
             # -interaction=nonstopmode: Don't stop on errors
             # -halt-on-error: Stop on the first error (optional, but cleaner)
             cmd = [
-                "pdflatex",
+                self.compiler_path,
                 "-interaction=nonstopmode",
                 "-halt-on-error",
                 tex_filename

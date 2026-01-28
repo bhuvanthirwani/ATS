@@ -641,7 +641,17 @@ elif "Dashboard" in page:
                 with open(tex_path, "w", encoding="utf-8") as f:
                     f.write(opt_result.new_latex_code)
                 
-                compiler = LaTeXCompiler(output_dir)
+                # Get system compiler path
+                sys_config = fm.get_system_config()
+                compiler_path = sys_config.get("database", {}).get("latex_compiler", "pdflatex")
+                
+                # If path doesn't exist (e.g. windows path on linux), fallback to "pdflatex"
+                # This is a safety check unless it's a simple command
+                if "\\" in compiler_path and not os.path.exists(compiler_path):
+                     if os.name != 'nt':
+                        compiler_path = "pdflatex"
+
+                compiler = LaTeXCompiler(output_dir, compiler_path)
                 success = compiler.compile(tex_filename)
                 
                 if success:
@@ -692,7 +702,14 @@ elif "Dashboard" in page:
             if st.button("💾 Re-compile"):
                 with open(tex_path, "w", encoding="utf-8") as f:
                     f.write(edited_tex)
-                compiler = LaTeXCompiler(output_dir)
+                sys_config = fm.get_system_config()
+                compiler_path = sys_config.get("database", {}).get("latex_compiler", "pdflatex")
+                
+                # Safety check for path validity across OS
+                if "\\" in compiler_path and not os.path.exists(compiler_path) and os.name != 'nt':
+                    compiler_path = "pdflatex"
+
+                compiler = LaTeXCompiler(output_dir, compiler_path)
                 if compiler.compile(f"{st.session_state.custom_resume_name}.tex"):
                     st.success("Re-compiled!")
                     st.rerun()
