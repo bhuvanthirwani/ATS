@@ -303,7 +303,7 @@ if "Settings" in page:
         
         # Define Simplified Prompt Keys with Defaults
         DEFAULT_PROMPTS = {
-            "analyze_prompt": """You are an Applicant Tracking System (ATS) used by Fortune-500 companies.
+            "analyze_prompt": r"""You are an Applicant Tracking System (ATS) used by Fortune-500 companies.
 
 Your task is to score how well a candidate’s resume matches a job description using the same logic as modern ATS platforms (Workday, Greenhouse, Lever, iCIMS).
 
@@ -358,6 +358,7 @@ STRICT RULES
 1) DO NOT: change section structure, remove existing sections, or rename headers.
 2) YOU MUST: Add missing keywords to Skills, Experience, and Projects.
 3) If a core skill is missing, enhance bullets with relevant frameworks (e.g., Java -> Spring Boot).
+4) If & or % is written in latex code, replace with \\&  and \\% as these punctuations throws error in Latex.
 
 --------------------------------
 REQUIRED OUTPUT (JSON — NO EXTRA TEXT)
