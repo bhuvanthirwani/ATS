@@ -1,0 +1,11 @@
+services:
+  ats-app:
+    build: .
+    ports:
+      - "8501:8501"
+    volumes:
+      - ./users:/app/users
+      - ./configs:/app/configs
+      - ./DB:/app/DB
+      - ./llms.json:/app/llms.json
+    restart: unless-stopped
