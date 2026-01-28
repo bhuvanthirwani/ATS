@@ -13,9 +13,9 @@ if [ "$EUID" -ne 0 ]; then
   exit 1
 fi
 
-echo "🧹 Clearing existing Nginx configurations..."
-rm -f /etc/nginx/sites-enabled/*
-rm -f /etc/nginx/sites-available/*
+
+# Remove default if exists
+rm -f /etc/nginx/sites-enabled/default
 
 echo "🌐 Configuring Nginx reverse proxy..."
 
@@ -44,4 +44,12 @@ nginx -t
 echo "🔄 Restarting Nginx..."
 systemctl restart nginx
 
-echo "✅ Nginx Setup Complete!"
+echo "📦 Installing Certbot..."
+# Only install if not present to save time, or just update
+apt-get update
+apt-get install -y certbot python3-certbot-nginx
+
+echo "🔒 Obtaining SSL..."
+certbot --nginx -d ats.haxcodes.dev --non-interactive --agree-tos -m bhuvanthirwani2208usa@gmail.com --redirect
+
+echo "✅ Nginx & SSL Setup Complete!"
