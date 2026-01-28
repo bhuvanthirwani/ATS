@@ -21,4 +21,6 @@ COPY . .
 
 EXPOSE 8501
 
+ENV APP_ENV=docker
+
 CMD ["streamlit", "run", "app.py", "--server.address=0.0.0.0"]

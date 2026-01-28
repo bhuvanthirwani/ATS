@@ -92,6 +92,26 @@ class FileManager:
         merged = {**catalog_def, **item} 
         return merged
 
+    def get_system_config(self):
+        """Loads the system-wide configuration based on APP_ENV."""
+        env = os.environ.get("APP_ENV", "development")
+        config_path = self.configs_dir / f"{env}.json"
+        
+        if not config_path.exists():
+            # Fallback to development if specific env config missing
+            print(f"Warning: Config for {env} not found at {config_path}. Defaulting to development.")
+            config_path = self.configs_dir / "development.json"
+            
+        if not config_path.exists():
+             return {}
+
+        try:
+            with open(config_path, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception as e:
+            print(f"Error loading system config: {e}")
+            return {}
+
 
 # --- UTILITIES (Preserved from original) ---
 

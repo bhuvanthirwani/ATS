@@ -34,6 +34,12 @@ apt install -y \
 
 echo "🐳 Installing Docker..."
 
+# Remove conflicting packages (Official Doc Recommendation)
+echo "🧹 Removing potential conflicting packages..."
+for pkg in docker.io docker-doc docker-compose docker-compose-v2 podman-docker containerd runc; do 
+    apt-get remove -y $pkg || true
+done
+
 mkdir -p /etc/apt/keyrings
 
 if [ ! -f /etc/apt/keyrings/docker.gpg ]; then
