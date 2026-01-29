@@ -77,8 +77,9 @@ fi
 echo "🔥 Configuring firewall..."
 
 ufw allow OpenSSH
-ufw allow 80
-ufw allow 443
+ufw allow 80/tcp
+ufw allow 443/tcp
+
 # Ensure external access to Streamlit is blocked (only via Nginx)
 # If you want direct access, allow 8501: ufw allow 8501
 ufw --force enable
