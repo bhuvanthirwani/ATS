@@ -77,6 +77,34 @@ streamlit run app.py
 ### 3. Login
 Enter any unique **User ID** (e.g., `jdoe`) to create your private workspace.
 
+### 3. Login
+Enter any unique **User ID** (e.g., `jdoe`) to create your private workspace.
+
+---
+
+## 🚢 Deployment (Production)
+
+This project includes automated scripts for deploying to an Ubuntu server (e.g., Oracle Cloud, DigitalOcean) with Docker and Nginx (SSL).
+
+### 1. Initial Server Setup
+Run this once to install Docker, Nginx, and configure the Firewall.
+```bash
+sudo ./setup.sh
+```
+
+### 2. Run Application
+Use the manager script to build and start the Docker container.
+```bash
+./docker_manager.sh
+# Select Option 2: Run Container
+```
+
+### 3. Configure SSL & Domain
+Map your domain (e.g., `ats.haxcodes.dev`) and auto-configure SSL with Certbot.
+```bash
+sudo ./nginx.sh
+```
+
 ---
 
 ## 📸 Architecture
