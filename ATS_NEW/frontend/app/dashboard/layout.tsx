@@ -1,4 +1,5 @@
 import Sidebar from "@/components/Sidebar";
+import Box from "@mui/material/Box";
 
 export default function DashboardLayout({
     children,
@@ -6,11 +7,11 @@ export default function DashboardLayout({
     children: React.ReactNode;
 }) {
     return (
-        <div className="flex min-h-screen flex-row">
+        <Box sx={{ display: 'flex' }}>
             <Sidebar />
-            <main className="flex-1 p-8 overflow-y-auto h-screen">
+            <Box component="main" sx={{ flexGrow: 1, p: 3, width: '100%' }}>
                 {children}
-            </main>
-        </div>
+            </Box>
+        </Box>
     );
 }

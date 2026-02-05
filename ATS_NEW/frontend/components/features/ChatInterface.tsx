@@ -3,6 +3,13 @@
 import { useState } from "react";
 import { api } from "@/lib/api";
 import { useMutation } from "@tanstack/react-query";
+import {
+    Box, Paper, Typography, Tabs, Tab, TextField,
+    Button, Chip, CircularProgress, Stack, Divider,
+    IconButton
+} from "@mui/material";
+import SendIcon from "@mui/icons-material/Send";
+import DownloadIcon from "@mui/icons-material/Download";
 
 interface ChatProps {
     baseFilename: string;
@@ -19,7 +26,6 @@ interface ChatMessage {
 }
 
 export default function ChatInterface({ baseFilename, jobDescription, initialScore }: ChatProps) {
-    // History starts with the base optimized version
     const [messages, setMessages] = useState<ChatMessage[]>([{
         role: "assistant",
         content: `I've created the initial optimized resume (v1). It has a predicted score of ${initialScore}%. How would you like to refine it?`,
@@ -34,16 +40,8 @@ export default function ChatInterface({ baseFilename, jobDescription, initialSco
     const refineMutation = useMutation({
         mutationFn: async (userReq: string) => {
             const nextVer = `v${versions.length + 1}`;
-            const currentFilename = `${baseFilename}_${currentVersion}.tex`;
-            const outputFilename = `${baseFilename}_${nextVer}`;
-
-            // Special case for v1 if the file was just "Optimized_Resume.tex" (base)
-            // Ideally backend handles clean naming, but assuming we standardized on base_vX
-            // If current is v1, we might need to look for just baseFilename if v1 doesn't exist?
-            // For simplicity, let's assume the Dashboard saves the first one as baseFilename_v1 OR we handle it here.
-
-            // Safe bet: Pass the actual filename of the current version being viewed
             const actualCurrentFilename = currentVersion === "v1" ? baseFilename : `${baseFilename}_${currentVersion}`;
+            const outputFilename = `${baseFilename}_${nextVer}`;
 
             return await api.post("/actions/refine", {
                 current_tex_filename: actualCurrentFilename,
@@ -52,10 +50,9 @@ export default function ChatInterface({ baseFilename, jobDescription, initialSco
                 job_description: jobDescription
             });
         },
-        onSuccess: (res, userReq) => {
+        onSuccess: (res) => {
             const data = res.data;
             const nextVer = `v${versions.length + 1}`;
-
             const newMsg: ChatMessage = {
                 role: "assistant",
                 content: `I've updated the resume based on your request: "${data.refinement.summary}".`,
@@ -75,7 +72,6 @@ export default function ChatInterface({ baseFilename, jobDescription, initialSco
 
     const handleSend = () => {
         if (!input.trim() || refineMutation.isPending) return;
-
         const userMsg: ChatMessage = { role: "user", content: input };
         setMessages(prev => [...prev, userMsg]);
         refineMutation.mutate(input);
@@ -83,91 +79,100 @@ export default function ChatInterface({ baseFilename, jobDescription, initialSco
     };
 
     return (
-        <div className="card bg-base-100 border border-base-300 shadow-xl h-[800px] flex flex-col">
-            <div className="p-4 border-b border-base-300 flex justify-between items-center bg-base-200/50">
-                <h3 className="font-bold text-lg">💬 Refinement Chat</h3>
-                <div className="tabs tabs-boxed tabs-sm">
-                    {versions.map(v => (
-                        <a key={v} className={`tab ${currentVersion === v ? 'tab-active' : ''}`} onClick={() => setCurrentVersion(v)}>{v}</a>
-                    ))}
-                </div>
-            </div>
+        <Paper elevation={3} sx={{ height: '800px', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+            <Box sx={{ p: 2, borderBottom: '1px solid rgba(255,255,255,0.1)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', bgcolor: 'background.paper' }}>
+                <Typography variant="h6">💬 Refinement Chat</Typography>
+                <Tabs
+                    value={versions.indexOf(currentVersion)}
+                    onChange={(_, idx) => setCurrentVersion(versions[idx])}
+                    variant="scrollable"
+                    scrollButtons="auto"
+                >
+                    {versions.map(v => <Tab key={v} label={v} />)}
+                </Tabs>
+            </Box>
 
-            <div className="flex-1 overflow-hidden flex">
-                {/* PDF PREVIEW PANEL */}
-                <div className="w-1/2 bg-base-200 p-2 flex flex-col">
-                    <div className="flex justify-between items-center mb-2 px-2">
-                        <span className="text-xs font-mono opacity-50">
-                            Viewing: {currentVersion === "v1" ? baseFilename : `${baseFilename}_${currentVersion}`}.pdf
-                        </span>
-
-                        {/* Download Links */}
-                        <div className="join">
-                            <a
+            <Box sx={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
+                {/* PREVIEW PANEL */}
+                <Box sx={{ width: '50%', p: 2, bgcolor: 'background.default', borderRight: '1px solid rgba(255,255,255,0.05)' }}>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
+                        <Typography variant="caption" color="text.secondary">
+                            Viewing: {currentVersion === "v1" ? baseFilename : `${baseFilename}_${currentVersion}`}
+                        </Typography>
+                        <Stack direction="row" spacing={1}>
+                            <Button
+                                size="small"
+                                startIcon={<DownloadIcon />}
                                 href={`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1'}/files/output/${currentVersion === "v1" ? baseFilename : `${baseFilename}_${currentVersion}`}.pdf`}
                                 target="_blank"
-                                className="btn btn-xs join-item"
                             >
                                 PDF
-                            </a>
-                            <a
+                            </Button>
+                            <Button
+                                size="small"
+                                startIcon={<DownloadIcon />}
                                 href={`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1'}/files/output/${currentVersion === "v1" ? baseFilename : `${baseFilename}_${currentVersion}`}.tex`}
                                 target="_blank"
-                                className="btn btn-xs join-item"
                             >
                                 TeX
-                            </a>
-                        </div>
-                    </div>
-
-                    {/* IFRAME PDF PREVIEW */}
-                    {/* Note: We need a way to serve static files. Currently backend runs on 8000 but nginx is on 80. 
-                        We don't have a dedicated static file server for /data unless we add a route. 
-                        Wait, we don't have a GET /files/download endpoint in the plan yet, 
-                        only list. We need to add one or use Nginx to serve /data/users/... 
-                        For now, let's assume we can add a simple download endpoint to FilesController.
-                        Actually, let's just make sure the user can download. Visual preview might fail without a blob link.
-                    */}
-                    <div className="flex-1 flex items-center justify-center bg-white/5 rounded">
-                        <p className="text-sm opacity-50">PDF Preview (Download to view)</p>
-                    </div>
-                </div>
+                            </Button>
+                        </Stack>
+                    </Box>
+                    <Box sx={{
+                        width: '100%',
+                        height: 'calc(100% - 40px)',
+                        bgcolor: 'background.paper',
+                        borderRadius: 1,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        border: '2px dashed rgba(255,255,255,0.1)'
+                    }}>
+                        <Typography color="text.secondary">PDF Preview Not Available</Typography>
+                    </Box>
+                </Box>
 
                 {/* CHAT PANEL */}
-                <div className="w-1/2 flex flex-col border-l border-base-300">
-                    <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                <Box sx={{ width: '50%', display: 'flex', flexDirection: 'column' }}>
+                    <Box sx={{ flex: 1, overflowY: 'auto', p: 2, display: 'flex', flexDirection: 'column', gap: 2 }}>
                         {messages.map((m, i) => (
-                            <div key={i} className={`chat ${m.role === 'user' ? 'chat-end' : 'chat-start'}`}>
-                                <div className={`chat-bubble ${m.role === 'user' ? 'chat-bubble-primary' : 'chat-bubble-secondary'}`}>
-                                    {m.content}
-                                    {m.score && (
-                                        <div className="mt-2 pt-2 border-t border-white/20 text-xs">
-                                            ATS Score: {m.score}%
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
+                            <Box
+                                key={i}
+                                sx={{
+                                    alignSelf: m.role === 'user' ? 'flex-end' : 'flex-start',
+                                    maxWidth: '80%',
+                                    bgcolor: m.role === 'user' ? 'primary.main' : 'background.paper',
+                                    p: 2,
+                                    borderRadius: 2,
+                                    boxShadow: 1
+                                }}
+                            >
+                                <Typography variant="body1">{m.content}</Typography>
+                                {m.score && (
+                                    <Typography variant="caption" display="block" sx={{ mt: 1, opacity: 0.8 }}>
+                                        ATS Score: {m.score}%
+                                    </Typography>
+                                )}
+                            </Box>
                         ))}
-                        {refineMutation.isPending && <div className="loading loading-dots loading-sm ml-4"></div>}
-                    </div>
+                        {refineMutation.isPending && <CircularProgress size={20} sx={{ ml: 2 }} />}
+                    </Box>
 
-                    <div className="p-4 border-t border-base-300 bg-base-100">
-                        <div className="flex gap-2">
-                            <input
-                                type="text"
-                                className="input input-bordered flex-1"
-                                placeholder="E.g., Make the summary more punchy..."
-                                value={input}
-                                onChange={(e) => setInput(e.target.value)}
-                                onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-                            />
-                            <button className="btn btn-primary" onClick={handleSend} disabled={refineMutation.isPending}>
-                                Send
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
+                    <Box sx={{ p: 2, borderTop: '1px solid rgba(255,255,255,0.1)', bgcolor: 'background.paper', display: 'flex', gap: 1 }}>
+                        <TextField
+                            fullWidth
+                            placeholder="Request changes (e.g. 'Add more React keywords')..."
+                            value={input}
+                            onChange={(e) => setInput(e.target.value)}
+                            onKeyDown={(e) => e.key === 'Enter' && handleSend()}
+                            size="small"
+                        />
+                        <IconButton color="primary" onClick={handleSend} disabled={refineMutation.isPending || !input.trim()}>
+                            <SendIcon />
+                        </IconButton>
+                    </Box>
+                </Box>
+            </Box>
+        </Paper>
     );
 }

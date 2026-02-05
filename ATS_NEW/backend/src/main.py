@@ -50,10 +50,13 @@ except Exception as e:
 app.include_router(api_router, prefix="/api/v1")
 
 # Global Exception Handler
+import traceback
+
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
-    logger.error(f"Global Error: {str(exc)}")
+    error_details = traceback.format_exc()
+    logger.error(f"Global Error: {str(exc)}\nTraceback:\n{error_details}")
     return JSONResponse(
         status_code=500,
-        content={"message": "Internal Server Error", "details": str(exc)},
+        content={"message": "Internal Server Error", "details": str(exc), "traceback": error_details},
     )

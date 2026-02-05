@@ -45,3 +45,7 @@ async def get_config(workspace_id: str = Depends(get_current_workspace), service
 @router.post("/config")
 async def update_config(config: dict, workspace_id: str = Depends(get_current_workspace), service: FileService = Depends(lambda: FileService())):
     return service.update_config(workspace_id, config)
+
+@router.get("/llm-catalog")
+async def get_llm_catalog(service: FileService = Depends(lambda: FileService())):
+    return service.get_llm_catalog()

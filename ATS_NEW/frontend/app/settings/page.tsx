@@ -3,50 +3,98 @@
 import { api } from "@/lib/api";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import {
+    Container, Typography, Box, Paper, Tabs, Tab,
+    TextField, Button, Select, MenuItem, FormControl,
+    InputLabel, IconButton, Grid, Chip, Divider, Alert, Snackbar
+} from "@mui/material";
+import DeleteIcon from "@mui/icons-material/Delete";
+import SaveIcon from "@mui/icons-material/Save";
+import AddIcon from "@mui/icons-material/Add";
+
+interface TabPanelProps {
+    children?: React.ReactNode;
+    index: number;
+    value: number;
+}
+
+function CustomTabPanel(props: TabPanelProps) {
+    const { children, value, index, ...other } = props;
+    return (
+        <div role="tabpanel" hidden={value !== index} {...other}>
+            {value === index && <Box sx={{ p: 3 }}>{children}</Box>}
+        </div>
+    );
+}
 
 export default function SettingsPage() {
     const queryClient = useQueryClient();
+    const [tabValue, setTabValue] = useState(0);
     const [config, setConfig] = useState<any>(null);
+    const [message, setMessage] = useState<{ text: string, type: "success" | "error" } | null>(null);
 
-    // Local state for form
+    // Form State
     const [newModel, setNewModel] = useState({
         name: "",
         provider: "openai",
-        model_id: "gpt-4-turbo",
+        model_id: "",
         api_key: ""
     });
 
-    const { data: remoteConfig, isLoading } = useQuery({
+    const [prompts, setPrompts] = useState({
+        analyze_prompt: "",
+        optimize_prompt: ""
+    });
+
+    // Queries
+    const { data: remoteConfig } = useQuery({
         queryKey: ["config"],
         queryFn: async () => (await api.get("/files/config")).data
     });
 
+    const { data: llmCatalog } = useQuery({
+        queryKey: ["llm-catalog"],
+        queryFn: async () => (await api.get("/files/llm-catalog")).data
+    });
+
     useEffect(() => {
-        if (remoteConfig) setConfig(remoteConfig);
+        if (remoteConfig) {
+            setConfig(remoteConfig);
+            setPrompts({
+                analyze_prompt: remoteConfig.prompts?.analyze_prompt || "",
+                optimize_prompt: remoteConfig.prompts?.optimize_prompt || ""
+            });
+        }
     }, [remoteConfig]);
 
     const updateConfigMutation = useMutation({
-        mutationFn: async (newConfig: any) => {
-            return api.post("/files/config", newConfig);
-        },
+        mutationFn: async (newConfig: any) => api.post("/files/config", newConfig),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["config"] });
-            alert("Configuration Saved!");
-        }
+            setMessage({ text: "Configuration Saved!", type: "success" });
+        },
+        onError: () => setMessage({ text: "Failed to save configuration.", type: "error" })
     });
 
+    const handleSavePrompts = () => {
+        if (!config) return;
+        const updatedConfig = { ...config, prompts: prompts };
+        setConfig(updatedConfig);
+        updateConfigMutation.mutate(updatedConfig);
+    };
+
     const handleAddModel = () => {
-        if (!newModel.api_key || !newModel.name) return;
+        if (!newModel.api_key || !newModel.name || !newModel.model_id) return;
+        const catalogItem = llmCatalog?.find((c: any) => c.id === newModel.model_id);
 
         const newEntry = {
             id: crypto.randomUUID(),
             name: newModel.name,
-            provider: newModel.provider,
-            model_id: newModel.model_id, // This acts as sdk_id in old app
-            sdk_id: newModel.model_id,
+            provider: catalogItem?.provider || newModel.provider,
+            model_id: catalogItem?.model_name || newModel.model_id,
+            sdk_id: catalogItem?.id || newModel.model_id,
             api_key: newModel.api_key,
-            plan_type: "paid"
+            plan_type: catalogItem?.plans_supported?.includes('free') ? 'free' : 'paid'
         };
 
         const updatedInventory = [...(config.llm_inventory || []), newEntry];
@@ -61,120 +109,218 @@ export default function SettingsPage() {
         setNewModel({ ...newModel, name: "", api_key: "" });
     };
 
+    const handleDeleteModel = (id: string) => {
+        const updatedInventory = config.llm_inventory.filter((m: any) => m.id !== id);
+        const updatedConfig = { ...config, llm_inventory: updatedInventory };
+        if (config.selected_llm_id === id) updatedConfig.selected_llm_id = null;
+
+        setConfig(updatedConfig);
+        updateConfigMutation.mutate(updatedConfig);
+    };
+
     const handleSelectModel = (id: string) => {
         const updatedConfig = { ...config, selected_llm_id: id };
         setConfig(updatedConfig);
         updateConfigMutation.mutate(updatedConfig);
-    }
-
-    const handleDeleteModel = (id: string) => {
-        const updatedInventory = config.llm_inventory.filter((m: any) => m.id !== id);
-        const updatedConfig = { ...config, llm_inventory: updatedInventory };
-        if (config.selected_llm_id === id) {
-            updatedConfig.selected_llm_id = updatedInventory[0]?.id || null;
-        }
-        setConfig(updatedConfig);
-        updateConfigMutation.mutate(updatedConfig);
-    }
-
-    if (isLoading) return <div>Loading settings...</div>;
+    };
 
     return (
-        <div className="space-y-8 max-w-4xl mx-auto">
-            <h1 className="text-3xl font-bold">⚙️ Settings</h1>
+        <Container maxWidth="lg">
+            <Box sx={{ mb: 4 }}>
+                <Typography variant="h4" fontWeight="bold">Configuration</Typography>
+            </Box>
 
-            {/* ACTIVE MODEL */}
-            <div className="card bg-base-200 p-6 border border-white/5">
-                <h2 className="text-xl font-semibold mb-4">Active LLM Provider</h2>
-                <div className="form-control">
-                    <select
-                        className="select select-bordered w-full"
-                        value={config?.selected_llm_id || ""}
-                        onChange={(e) => handleSelectModel(e.target.value)}
-                    >
-                        <option value="" disabled>Select a model to use...</option>
+            <Paper sx={{ width: '100%' }}>
+                <Tabs value={tabValue} onChange={(_, v) => setTabValue(v)} indicatorColor="primary" textColor="primary">
+                    <Tab label="AI Models" />
+                    <Tab label="LLM Inventory" />
+                    <Tab label="System Prompts" />
+                </Tabs>
+
+                {/* TAB 1: MODEL SELECTION */}
+                <CustomTabPanel value={tabValue} index={0}>
+                    <Typography variant="h6" gutterBottom>Active Model</Typography>
+
+                    {config?.llm_inventory?.length > 0 ? (
+                        <Grid container spacing={2} alignItems="center">
+                            <Grid item xs={12} md={6}>
+                                <FormControl fullWidth>
+                                    <InputLabel>Choose Model</InputLabel>
+                                    <Select
+                                        value={config?.selected_llm_id || ""}
+                                        label="Choose Model"
+                                        onChange={(e) => handleSelectModel(e.target.value)}
+                                    >
+                                        {config.llm_inventory.map((m: any) => (
+                                            <MenuItem key={m.id} value={m.id}>
+                                                {m.name} ({m.provider}/{m.plan_type})
+                                            </MenuItem>
+                                        ))}
+                                    </Select>
+                                </FormControl>
+                            </Grid>
+                            <Grid item xs={12}>
+                                <Alert severity="info" sx={{ mt: 2 }}>
+                                    Selected model will be used for all analysis and optimization tasks.
+                                </Alert>
+                            </Grid>
+                        </Grid>
+                    ) : (
+                        <Alert severity="warning">No models found! Please go to Inventory tab to add one.</Alert>
+                    )}
+                </CustomTabPanel>
+
+                {/* TAB 2: INVENTORY */}
+                <CustomTabPanel value={tabValue} index={1}>
+                    <Typography variant="h6" gutterBottom>Add New Model</Typography>
+                    <Grid container spacing={2} sx={{ mb: 4 }}>
+                        <Grid item xs={12} md={4}>
+                            <FormControl fullWidth>
+                                <InputLabel>Base Model</InputLabel>
+                                <Select
+                                    value={newModel.model_id}
+                                    label="Base Model"
+                                    onChange={(e) => {
+                                        const found = llmCatalog?.find((c: any) => c.id === e.target.value);
+                                        setNewModel({
+                                            ...newModel,
+                                            model_id: e.target.value,
+                                            provider: found?.provider || "openai"
+                                        });
+                                    }}
+                                >
+                                    {llmCatalog?.map((c: any) => (
+                                        <MenuItem key={c.id} value={c.id}>
+                                            {c.display_name} ({c.provider})
+                                        </MenuItem>
+                                    ))}
+                                </Select>
+                            </FormControl>
+                        </Grid>
+                        <Grid item xs={12} md={4}>
+                            <TextField
+                                fullWidth
+                                label="Friendly Name"
+                                value={newModel.name}
+                                onChange={(e) => setNewModel({ ...newModel, name: e.target.value })}
+                            />
+                        </Grid>
+                        <Grid item xs={12} md={4}>
+                            <TextField
+                                fullWidth
+                                label="API Key"
+                                type="password"
+                                value={newModel.api_key}
+                                onChange={(e) => setNewModel({ ...newModel, api_key: e.target.value })}
+                            />
+                        </Grid>
+                        <Grid item xs={12}>
+                            <Button
+                                variant="contained"
+                                startIcon={<AddIcon />}
+                                onClick={handleAddModel}
+                                disabled={!newModel.api_key || !newModel.name || !newModel.model_id}
+                            >
+                                Add to Inventory
+                            </Button>
+                        </Grid>
+                    </Grid>
+
+                    <Divider sx={{ my: 4 }} />
+                    <Typography variant="h6" gutterBottom>Existing Models</Typography>
+                    <Grid container spacing={2}>
                         {config?.llm_inventory?.map((m: any) => (
-                            <option key={m.id} value={m.id}>{m.name} ({m.provider} - {m.model_id})</option>
+                            <Grid item xs={12} md={6} key={m.id}>
+                                <Paper variant="outlined" sx={{ p: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <Box>
+                                        <Typography variant="subtitle1" fontWeight="bold">{m.name}</Typography>
+                                        <Typography variant="caption" color="text.secondary">{m.provider} • {m.plan_type}</Typography>
+                                    </Box>
+                                    <IconButton color="error" onClick={() => handleDeleteModel(m.id)}>
+                                        <DeleteIcon />
+                                    </IconButton>
+                                </Paper>
+                            </Grid>
                         ))}
-                    </select>
-                </div>
-            </div>
+                    </Grid>
+                </CustomTabPanel>
 
-            {/* ADD NEW MODEL */}
-            <div className="card bg-base-200 p-6 border border-white/5">
-                <h2 className="text-xl font-semibold mb-4">Add New Model</h2>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="form-control">
-                        <label className="label">Friendly Name</label>
-                        <input
-                            type="text"
-                            className="input input-bordered"
-                            value={newModel.name}
-                            onChange={(e) => setNewModel({ ...newModel, name: e.target.value })}
-                            placeholder="e.g. My GPT4 Key"
+                {/* TAB 3: PROMPTS */}
+                <CustomTabPanel value={tabValue} index={2}>
+                    <Typography variant="h6" gutterBottom>System Prompts</Typography>
+                    <Alert severity="info" sx={{ mb: 3 }}>
+                        Customize the instructions sent to the LLM.
+                        Use placeholders like <code>{"{resume_text}"}</code> and <code>{"{job_description}"}</code>.
+                    </Alert>
+
+                    <Box sx={{ mb: 4 }}>
+                        <Typography variant="subtitle2" gutterBottom>Analysis Prompt</Typography>
+                        <Box sx={{ mb: 1, display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                            {["{resume_text}", "{job_description}"].map((ph) => (
+                                <Chip
+                                    key={ph}
+                                    label={ph}
+                                    onClick={() => setPrompts(prev => ({ ...prev, analyze_prompt: prev.analyze_prompt + " " + ph }))}
+                                    color="primary"
+                                    variant="outlined"
+                                    size="small"
+                                    clickable
+                                />
+                            ))}
+                        </Box>
+                        <TextField
+                            fullWidth
+                            multiline
+                            rows={8}
+                            value={prompts.analyze_prompt}
+                            onChange={(e) => setPrompts({ ...prompts, analyze_prompt: e.target.value })}
                         />
-                    </div>
-                    <div className="form-control">
-                        <label className="label">Provider</label>
-                        <select
-                            className="select select-bordered"
-                            value={newModel.provider}
-                            onChange={(e) => setNewModel({ ...newModel, provider: e.target.value })}
-                        >
-                            <option value="openai">OpenAI</option>
-                            <option value="google">Google Gemini</option>
-                        </select>
-                    </div>
-                    <div className="form-control">
-                        <label className="label">Model ID</label>
-                        <select
-                            className="select select-bordered"
-                            value={newModel.model_id}
-                            onChange={(e) => setNewModel({ ...newModel, model_id: e.target.value })}
-                        >
-                            {newModel.provider === 'openai' ? (
-                                <>
-                                    <option value="gpt-4-turbo-preview">GPT-4 Turbo</option>
-                                    <option value="gpt-3.5-turbo">GPT-3.5 Turbo</option>
-                                </>
-                            ) : (
-                                <>
-                                    <option value="gemini-pro">Gemini Pro</option>
-                                </>
-                            )}
-                        </select>
-                    </div>
-                    <div className="form-control">
-                        <label className="label">API Key</label>
-                        <input
-                            type="password"
-                            className="input input-bordered"
-                            value={newModel.api_key}
-                            onChange={(e) => setNewModel({ ...newModel, api_key: e.target.value })}
-                            placeholder="sk-..."
+                    </Box>
+
+                    <Box sx={{ mb: 4 }}>
+                        <Typography variant="subtitle2" gutterBottom>Optimization Prompt</Typography>
+                        <Box sx={{ mb: 1, display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                            {["{resume_text}", "{job_description}", "{initial_ats_score}", "{missing_keywords}", "{matched_keywords}", "{justification}"].map((ph) => (
+                                <Chip
+                                    key={ph}
+                                    label={ph}
+                                    onClick={() => setPrompts(prev => ({ ...prev, optimize_prompt: prev.optimize_prompt + " " + ph }))}
+                                    color="secondary"
+                                    variant="outlined"
+                                    size="small"
+                                    clickable
+                                />
+                            ))}
+                        </Box>
+                        <TextField
+                            fullWidth
+                            multiline
+                            rows={8}
+                            value={prompts.optimize_prompt}
+                            onChange={(e) => setPrompts({ ...prompts, optimize_prompt: e.target.value })}
                         />
-                    </div>
-                </div>
-                <button className="btn btn-primary mt-6" onClick={handleAddModel}>➕ Add Model to Inventory</button>
-            </div>
+                    </Box>
 
-            {/* INVENTORY LIST */}
-            <div className="card bg-base-200 p-6 border border-white/5">
-                <h2 className="text-xl font-semibold mb-4">Inventory</h2>
-                <div className="space-y-2">
-                    {config?.llm_inventory?.map((m: any) => (
-                        <div key={m.id} className="flex justify-between items-center bg-base-100 p-3 rounded-lg">
-                            <div>
-                                <p className="font-bold">{m.name}</p>
-                                <p className="text-xs text-gray-500">{m.model_id}</p>
-                            </div>
-                            <button className="btn btn-ghost btn-sm text-error" onClick={() => handleDeleteModel(m.id)}>Delete</button>
-                        </div>
-                    ))}
-                    {!config?.llm_inventory?.length && <p className="text-gray-500">No models found.</p>}
-                </div>
-            </div>
+                    <Button
+                        variant="contained"
+                        size="large"
+                        startIcon={<SaveIcon />}
+                        onClick={handleSavePrompts}
+                    >
+                        Save Prompts
+                    </Button>
+                </CustomTabPanel>
+            </Paper>
 
-        </div>
+            <Snackbar
+                open={!!message}
+                autoHideDuration={4000}
+                onClose={() => setMessage(null)}
+            >
+                <Alert severity={message?.type || "info"} onClose={() => setMessage(null)}>
+                    {message?.text}
+                </Alert>
+            </Snackbar>
+        </Container>
     );
 }

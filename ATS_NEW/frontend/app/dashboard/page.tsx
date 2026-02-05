@@ -4,16 +4,24 @@ import { api } from "@/lib/api";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useState } from "react";
 import ChatInterface from "@/components/features/ChatInterface";
+import {
+    Container, Typography, Box, Stepper, Step, StepLabel,
+    Grid, Paper, FormControl, InputLabel, Select, MenuItem,
+    TextField, Button, Chip, CircularProgress, Alert,
+    Collapse, List, ListItem, ListItemText, Divider,
+    Card, CardContent, Link as MuiLink
+} from "@mui/material";
+import RefreshIcon from "@mui/icons-material/Refresh";
+import CloudUploadIcon from "@mui/icons-material/CloudUpload";
+import AutoFixHighIcon from "@mui/icons-material/AutoFixHigh";
+import DownloadIcon from "@mui/icons-material/Download";
 
 export default function Dashboard() {
     const [jobDescription, setJobDescription] = useState("");
     const [selectedTemplate, setSelectedTemplate] = useState("");
     const [selectedProfile, setSelectedProfile] = useState("");
     const [analysisResult, setAnalysisResult] = useState<any>(null);
-
-    // Keyword Filtering State
     const [ignoredKeywords, setIgnoredKeywords] = useState<Set<string>>(new Set());
-
     const [optimizationResult, setOptimizationResult] = useState<any>(null);
     const [customFilename, setCustomFilename] = useState("Optimized_Resume");
 
@@ -24,8 +32,16 @@ export default function Dashboard() {
     // Actions
     const analyzeMutation = useMutation({
         mutationFn: async () => {
+            // AUTO-FILL FILENAME LOGIC
+            // User requested output filename to match tex filename
+            if (selectedTemplate) {
+                const baseName = selectedTemplate.replace(/\.[^/.]+$/, "");
+                setCustomFilename(baseName + "_Optimized");
+            }
+
             const res = await api.post("/actions/analyze", {
                 template_filename: selectedTemplate,
+                profile_filename: selectedProfile,
                 job_description: jobDescription
             });
             return res.data;
@@ -48,216 +64,240 @@ export default function Dashboard() {
         onSuccess: (data) => setOptimizationResult(data)
     });
 
-    const toggleKeyword = (keyword: string) => {
-        const next = new Set(ignoredKeywords);
-        if (next.has(keyword)) next.delete(keyword);
-        else next.add(keyword);
-        setIgnoredKeywords(next);
-    }
-
     const handleOptimization = () => {
-        optimizeMutation.mutate({
-            ignored_keywords: Array.from(ignoredKeywords)
-        });
-    }
+        optimizeMutation.mutate({ ignored_keywords: Array.from(ignoredKeywords) });
+    };
+
+    const toggleKeyword = (keyword: string) => {
+        const newSet = new Set(ignoredKeywords);
+        if (newSet.has(keyword)) newSet.delete(keyword);
+        else newSet.add(keyword);
+        setIgnoredKeywords(newSet);
+    };
+
+    // calculate active step
+    let activeStep = 0;
+    if (analysisResult) activeStep = 1;
+    if (optimizationResult) activeStep = 3; // Completed
 
     return (
-        <div className="space-y-8 max-w-6xl mx-auto">
-            <div className="flex justify-between items-center">
-                <h1 className="text-3xl font-bold">🚀 Resume Studio</h1>
-            </div>
+        <Container maxWidth="xl" sx={{ pb: 10 }}>
+            <Box sx={{ mb: 4, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <Typography variant="h4" fontWeight="bold">
+                    🚀 Resume Studio
+                </Typography>
+            </Box>
 
-            {/* STEP 1: INPUTS */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <div className="card bg-base-200 p-6 border border-white/5 space-y-4">
-                    <h2 className="text-xl font-semibold">1. Configuration</h2>
+            <Stepper activeStep={activeStep} sx={{ mb: 6 }}>
+                <Step><StepLabel>Setup & Analyze</StepLabel></Step>
+                <Step><StepLabel>Review & Optimize</StepLabel></Step>
+                <Step><StepLabel>Download</StepLabel></Step>
+            </Stepper>
 
-                    {/* Template Select */}
-                    <div className="form-control">
-                        <label className="label">
-                            <span className="label-text">Select Template (.tex)</span>
-                        </label>
-                        <select
-                            className="select select-bordered w-full"
-                            value={selectedTemplate}
-                            onChange={(e) => setSelectedTemplate(e.target.value)}
-                        >
-                            <option value="" disabled>Choose a template...</option>
-                            {templates.data?.map((t: string) => <option key={t} value={t}>{t}</option>)}
-                        </select>
-                    </div>
+            <Grid container spacing={4}>
+                {/* COLUMN 1: Inputs */}
+                <Grid item xs={12} lg={4}>
+                    <Paper sx={{ p: 3, height: '100%' }}>
+                        <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                            <Chip label="1" color="primary" size="small" /> Configuration
+                        </Typography>
 
-                    {/* Profile Select */}
-                    <div className="form-control">
-                        <label className="label">
-                            <span className="label-text">Select Profile (.pdf)</span>
-                        </label>
-                        <select
-                            className="select select-bordered w-full"
-                            value={selectedProfile}
-                            onChange={(e) => setSelectedProfile(e.target.value)}
-                        >
-                            <option value="" disabled>Choose a LinkedIn Profile...</option>
-                            {profiles.data?.map((p: string) => <option key={p} value={p}>{p}</option>)}
-                        </select>
-                    </div>
+                        <FormControl fullWidth margin="normal">
+                            <InputLabel>Target Template (.tex)</InputLabel>
+                            <Select
+                                value={selectedTemplate}
+                                label="Target Template (.tex)"
+                                onChange={(e) => setSelectedTemplate(e.target.value)}
+                                disabled={analyzeMutation.isPending || !!analysisResult}
+                            >
+                                {templates.data?.map((t: string) => <MenuItem key={t} value={t}>{t}</MenuItem>)}
+                            </Select>
+                        </FormControl>
 
-                    {/* Filename */}
-                    <div className="form-control">
-                        <label className="label">
-                            <span className="label-text">Output Filename</span>
-                        </label>
-                        <input
-                            type="text"
-                            className="input input-bordered w-full"
-                            value={customFilename}
-                            onChange={(e) => setCustomFilename(e.target.value)}
-                        />
-                    </div>
-                </div>
-
-                <div className="card bg-base-200 p-6 border border-white/5 flex flex-col h-full">
-                    <h2 className="text-xl font-semibold mb-4">2. Job Description</h2>
-                    <textarea
-                        className="textarea textarea-bordered flex-1 w-full text-base"
-                        placeholder="Paste the Job Description here including title, responsibilities, and requirements..."
-                        value={jobDescription}
-                        onChange={(e) => setJobDescription(e.target.value)}
-                    ></textarea>
-                </div>
-            </div>
-
-            {/* STEP 2: ACTIONS */}
-            <div className="flex gap-4">
-                <button
-                    className="btn btn-primary flex-1"
-                    disabled={!selectedTemplate || !jobDescription || analyzeMutation.isPending}
-                    onClick={() => analyzeMutation.mutate()}
-                >
-                    {analyzeMutation.isPending ? "Analyzing..." : "🔍 Phase 1: Analyze Match"}
-                </button>
-
-                <button
-                    className="btn btn-secondary flex-1"
-                    disabled={!analysisResult || !selectedProfile || optimizeMutation.isPending}
-                    onClick={handleOptimization}
-                >
-                    {optimizeMutation.isPending ? "Optimizing..." : "✨ Phase 2: Optimize & Generate"}
-                </button>
-            </div>
-
-            {/* RESULTS AREA */}
-            {(analysisResult || optimizeMutation.error) && (
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-
-                    {/* Analysis Card */}
-                    <div className="card bg-base-300 border border-primary/20 p-6">
-                        <h3 className="text-lg font-bold mb-4">📊 Analysis Report</h3>
-                        {analyzeMutation.error && <p className="text-error">Error: {JSON.stringify(analyzeMutation.error)}</p>}
+                        <FormControl fullWidth margin="normal">
+                            <InputLabel>Source Profile (.pdf)</InputLabel>
+                            <Select
+                                value={selectedProfile}
+                                label="Source Profile (.pdf)"
+                                onChange={(e) => setSelectedProfile(e.target.value)}
+                                disabled={analyzeMutation.isPending || !!analysisResult}
+                            >
+                                {profiles.data?.map((p: string) => <MenuItem key={p} value={p}>{p}</MenuItem>)}
+                            </Select>
+                        </FormControl>
 
                         {analysisResult && (
-                            <div className="space-y-4">
-                                <div className="stats shadow w-full bg-base-100">
-                                    <div className="stat place-items-center">
-                                        <div className="stat-title">ATS Match Score</div>
-                                        <div className="stat-value text-primary">{analysisResult.ats_score}%</div>
-                                        <div className="stat-desc">Target: 80%+</div>
-                                    </div>
-                                </div>
-
-                                <div>
-                                    <span className="font-bold text-success">✅ Matched: </span>
-                                    <span className="text-sm opacity-80">{analysisResult.matched_keywords.join(", ")}</span>
-                                </div>
-                                <div>
-                                    <span className="font-bold text-error">❌ Missing (Select to Ignore): </span>
-                                    <div className="flex flex-wrap gap-2 mt-2">
-                                        {analysisResult.missing_keywords.map((k: string) => (
-                                            <button
-                                                key={k}
-                                                onClick={() => toggleKeyword(k)}
-                                                className={`badge ${ignoredKeywords.has(k) ? 'badge-ghost opacity-50 line-through' : 'badge-error'} cursor-pointer gap-2 p-3`}
-                                            >
-                                                {k}
-                                                {ignoredKeywords.has(k) && <span>✕</span>}
-                                            </button>
-                                        ))}
-                                    </div>
-                                </div>
-
-                                <div className="collapse collapse-arrow bg-base-200 mt-2">
-                                    <input type="checkbox" />
-                                    <div className="collapse-title font-medium">
-                                        See Detailed Justification
-                                    </div>
-                                    <div className="collapse-content text-sm">
-                                        <p><strong>Role Fit:</strong> {analysisResult.justification.role_fit}</p>
-                                        <p className="mt-2"><strong>Skill Depth:</strong> {analysisResult.justification.skill_depth}</p>
-                                    </div>
-                                </div>
-                            </div>
+                            <Button
+                                variant="outlined"
+                                color="warning"
+                                fullWidth
+                                startIcon={<RefreshIcon />}
+                                sx={{ mt: 2 }}
+                                onClick={() => {
+                                    setAnalysisResult(null);
+                                    setOptimizationResult(null);
+                                    setJobDescription("");
+                                }}
+                            >
+                                Start Over
+                            </Button>
                         )}
-                    </div>
+                    </Paper>
+                </Grid>
 
-                    {/* Optimization Results */}
-                    <div className="card bg-base-300 border border-secondary/20 p-6">
-                        <h3 className="text-lg font-bold mb-4">🚀 Optimization Result</h3>
+                {/* COLUMN 2: Actions */}
+                <Grid item xs={12} lg={8}>
+                    {!analysisResult && (
+                        <Paper sx={{ p: 3 }}>
+                            <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                <Chip label="2" color="primary" size="small" /> Job Description
+                            </Typography>
+                            <TextField
+                                fullWidth
+                                multiline
+                                rows={10}
+                                placeholder="Paste Job Description here..."
+                                value={jobDescription}
+                                onChange={(e) => setJobDescription(e.target.value)}
+                                variant="outlined"
+                                sx={{ mb: 2 }}
+                            />
+                            <Box display="flex" justifyContent="flex-end">
+                                <Button
+                                    variant="contained"
+                                    size="large"
+                                    disabled={!selectedTemplate || !selectedProfile || !jobDescription || analyzeMutation.isPending}
+                                    onClick={() => analyzeMutation.mutate()}
+                                    startIcon={analyzeMutation.isPending ? <CircularProgress size={20} /> : <CloudUploadIcon />}
+                                >
+                                    {analyzeMutation.isPending ? "Analyzing..." : "Phase 1: Analyze Match"}
+                                </Button>
+                            </Box>
+                            {analyzeMutation.error && (
+                                <Alert severity="error" sx={{ mt: 2 }}>{JSON.stringify(analyzeMutation.error)}</Alert>
+                            )}
+                        </Paper>
+                    )}
 
-                        {!optimizationResult && !optimizeMutation.isPending && (
-                            <div className="flex items-center justify-center h-48 opacity-50 text-center">
-                                Waiting for Phase 2...
-                            </div>
-                        )}
+                    {analysisResult && (
+                        <Paper sx={{ p: 3, mb: 4 }}>
+                            <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                <Chip label="3" color="secondary" size="small" /> Analysis & Optimization
+                            </Typography>
 
-                        {optimizeMutation.isPending && (
-                            <div className="flex items-center justify-center h-48">
-                                <span className="loading loading-bars loading-lg text-secondary"></span>
-                            </div>
-                        )}
-
-                        {optimizationResult && (
-                            <div className="space-y-4">
-                                <div className="stats shadow w-full bg-base-100">
-                                    <div className="stat place-items-center">
-                                        <div className="stat-title">New Predicted Score</div>
-                                        <div className="stat-value text-secondary">{optimizationResult.optimization.final_score}%</div>
-                                    </div>
-                                </div>
-
-                                <div className="alert alert-success text-sm">
-                                    <span>✅ PDF Generated Successfully at <strong>/output/{customFilename}.pdf</strong></span>
-                                </div>
-
-                                <div className="collapse collapse-arrow bg-base-200">
-                                    <input type="checkbox" />
-                                    <div className="collapse-title font-medium">
-                                        View Applied Changes
-                                    </div>
-                                    <div className="collapse-content text-sm">
-                                        <ul className="list-disc pl-4">
-                                            {optimizationResult.optimization.summary.map((s: string, i: number) => (
-                                                <li key={i}>{s}</li>
+                            <Grid container spacing={2} sx={{ mb: 3 }}>
+                                <Grid item xs={12} md={4}>
+                                    <Card variant="outlined">
+                                        <CardContent sx={{ textAlign: 'center' }}>
+                                            <Typography color="textSecondary" gutterBottom>Match Score</Typography>
+                                            <Typography variant="h3" color="primary.main" fontWeight="bold">
+                                                {analysisResult.ats_score}%
+                                            </Typography>
+                                            <Typography variant="caption">Target: 80%+</Typography>
+                                        </CardContent>
+                                    </Card>
+                                </Grid>
+                                <Grid item xs={12} md={8}>
+                                    <Box sx={{ mb: 2 }}>
+                                        <Typography variant="subtitle2" color="success.main" fontWeight="bold">✅ Matched Keywords</Typography>
+                                        <Typography variant="body2" color="text.secondary">
+                                            {analysisResult.matched_keywords.join(", ")}
+                                        </Typography>
+                                    </Box>
+                                    <Divider />
+                                    <Box sx={{ mt: 2 }}>
+                                        <Typography variant="subtitle2" color="error.main" fontWeight="bold">❌ Missing (Click to Ignore)</Typography>
+                                        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mt: 1 }}>
+                                            {analysisResult.missing_keywords.map((k: string) => (
+                                                <Chip
+                                                    key={k}
+                                                    label={k}
+                                                    color={ignoredKeywords.has(k) ? "default" : "error"}
+                                                    variant={ignoredKeywords.has(k) ? "outlined" : "filled"}
+                                                    onClick={() => toggleKeyword(k)}
+                                                    onDelete={ignoredKeywords.has(k) ? undefined : () => toggleKeyword(k)}
+                                                    deleteIcon={ignoredKeywords.has(k) ? undefined : <span>×</span>}
+                                                    sx={{ textDecoration: ignoredKeywords.has(k) ? 'line-through' : 'none' }}
+                                                />
                                             ))}
-                                        </ul>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-                    </div>
-                </div>
-            )}
+                                        </Box>
+                                    </Box>
+                                </Grid>
+                            </Grid>
 
-            {/* STEP 3: Chat Iteration */}
-            {optimizationResult && (
-                <div className="animate-in fade-in slide-in-from-bottom-8 duration-700">
-                    <ChatInterface
-                        baseFilename={customFilename}
-                        jobDescription={jobDescription}
-                        initialScore={optimizationResult.optimization.final_score}
-                    />
-                </div>
-            )}
+                            <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+                                <TextField
+                                    label="Output Filename"
+                                    value={customFilename}
+                                    onChange={(e) => setCustomFilename(e.target.value)}
+                                    size="small"
+                                    fullWidth
+                                />
+                                <Button
+                                    variant="contained"
+                                    color="secondary"
+                                    size="large"
+                                    fullWidth
+                                    disabled={optimizeMutation.isPending || !!optimizationResult}
+                                    onClick={handleOptimization}
+                                    startIcon={optimizeMutation.isPending ? <CircularProgress size={20} /> : <AutoFixHighIcon />}
+                                >
+                                    {optimizeMutation.isPending ? "Generating..." : "Phase 2: Optimize PDF"}
+                                </Button>
+                            </Box>
+                            {optimizeMutation.isPending && <Box sx={{ width: '100%', mt: 2 }}><CircularProgress /></Box>}
+                        </Paper>
+                    )}
 
-        </div>
+                    {optimizationResult && (
+                        <Paper sx={{ p: 3, bgcolor: 'rgba(76, 175, 80, 0.1)', border: '1px solid rgba(76, 175, 80, 0.3)' }}>
+                            <Typography variant="h5" color="success.main" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                ✅ Success!
+                            </Typography>
+
+                            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                                <Typography>Your optimized resume is ready.</Typography>
+                                <Button
+                                    component={MuiLink}
+                                    href={`/api/v1/files/output/${customFilename}.pdf`}
+                                    target="_blank"
+                                    variant="contained"
+                                    color="success"
+                                    startIcon={<DownloadIcon />}
+                                >
+                                    Download PDF
+                                </Button>
+                            </Box>
+
+                            <Card variant="outlined">
+                                <CardContent>
+                                    <Typography variant="h6">New Score: {optimizationResult.optimization.final_score}%</Typography>
+                                    <Box sx={{ mt: 1 }}>
+                                        <Typography variant="subtitle2">Changes Applied:</Typography>
+                                        <List dense>
+                                            {optimizationResult.optimization.summary.map((s: string, i: number) => (
+                                                <ListItem key={i}>
+                                                    <ListItemText primary={s} sx={{ '& .MuiListItemText-primary': { fontSize: '0.9rem' } }} />
+                                                </ListItem>
+                                            ))}
+                                        </List>
+                                    </Box>
+                                </CardContent>
+                            </Card>
+                        </Paper>
+                    )}
+
+                    {optimizationResult && (
+                        <Box sx={{ mt: 4 }}>
+                            <ChatInterface
+                                baseFilename={customFilename}
+                                jobDescription={jobDescription}
+                                initialScore={optimizationResult.optimization.final_score}
+                            />
+                        </Box>
+                    )}
+                </Grid>
+            </Grid>
+        </Container>
     );
 }

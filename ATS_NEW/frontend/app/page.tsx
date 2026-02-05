@@ -3,10 +3,26 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { api, setAuthToken } from "@/lib/api";
+import {
+    Box,
+    Card,
+    CardContent,
+    Typography,
+    Tabs,
+    Tab,
+    TextField,
+    Button,
+    Alert,
+    CircularProgress,
+    InputAdornment
+} from "@mui/material";
+import PersonIcon from "@mui/icons-material/Person";
+import LockIcon from "@mui/icons-material/Lock";
+import EmailIcon from "@mui/icons-material/Email";
 
 export default function Home() {
     const router = useRouter();
-    const [activeTab, setActiveTab] = useState<"login" | "register">("login");
+    const [activeTab, setActiveTab] = useState(0); // 0 = login, 1 = register
     const [formData, setFormData] = useState({
         username: "",
         email: "",
@@ -21,12 +37,11 @@ export default function Home() {
         setError("");
 
         try {
-            if (activeTab === "register") {
+            if (activeTab === 1) { // Register
                 const res = await api.post("/auth/register", formData);
                 setAuthToken(res.data.access_token, res.data.username);
                 router.push("/dashboard");
-            } else {
-                // Login
+            } else { // Login
                 const res = await api.post("/auth/login", {
                     username: formData.username,
                     password: formData.password
@@ -42,90 +57,134 @@ export default function Home() {
     };
 
     return (
-        <main className="flex min-h-screen flex-col items-center justify-center p-4 relative overflow-hidden">
-            {/* Background blobs */}
-            <div className="absolute top-[-10%] left-[-10%] w-[500px] h-[500px] bg-primary/20 rounded-full blur-[100px]" />
-            <div className="absolute bottom-[-10%] right-[-10%] w-[500px] h-[500px] bg-secondary/20 rounded-full blur-[100px]" />
+        <Box
+            sx={{
+                minHeight: '100vh',
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'center',
+                alignItems: 'center',
+                position: 'relative',
+                overflow: 'hidden',
+                background: 'radial-gradient(circle at top right, #1e1b4b 0%, #0f172a 100%)'
+            }}
+        >
+            {/* Background Blobs */}
+            <Box sx={{
+                position: 'absolute',
+                top: '-10%',
+                left: '-10%',
+                width: '500px',
+                height: '500px',
+                bgcolor: 'primary.main',
+                opacity: 0.2,
+                borderRadius: '50%',
+                filter: 'blur(100px)'
+            }} />
+            <Box sx={{
+                position: 'absolute',
+                bottom: '-10%',
+                right: '-10%',
+                width: '500px',
+                height: '500px',
+                bgcolor: 'secondary.main',
+                opacity: 0.2,
+                borderRadius: '50%',
+                filter: 'blur(100px)'
+            }} />
 
-            <div className="z-10 text-center mb-8">
-                <h1 className="text-6xl font-black mb-2 bg-clip-text text-transparent bg-gradient-to-r from-primary to-secondary">
+            <Box sx={{ zIndex: 10, textAlign: 'center', mb: 4 }}>
+                <Typography variant="h2" fontWeight="900" sx={{
+                    background: "-webkit-linear-gradient(0deg, #06b6d4, #8b5cf6)",
+                    WebkitBackgroundClip: "text",
+                    WebkitTextFillColor: "transparent"
+                }}>
                     ATS PRO
-                </h1>
-                <p className="text-xl opacity-80">AI-Powered Resume Architecture</p>
-            </div>
+                </Typography>
+                <Typography variant="h6" sx={{ opacity: 0.8, color: 'text.secondary' }}>
+                    AI-Powered Resume Architecture
+                </Typography>
+            </Box>
 
-            <div className="card w-full max-w-md bg-base-100 shadow-2xl border border-white/10 backdrop-blur-md">
-                <div className="card-body">
+            <Card sx={{ maxWidth: 450, width: '100%', zIndex: 10, bgcolor: 'background.paper', border: '1px solid rgba(255,255,255,0.1)' }}>
+                <CardContent sx={{ p: 4 }}>
+                    <Tabs
+                        value={activeTab}
+                        onChange={(_, v) => setActiveTab(v)}
+                        variant="fullWidth"
+                        indicatorColor="primary"
+                        sx={{ mb: 3 }}
+                    >
+                        <Tab label="Login" />
+                        <Tab label="Register" />
+                    </Tabs>
 
-                    {/* TABS */}
-                    <div className="tabs tabs-boxed mb-6 bg-base-200">
-                        <a className={`tab flex-1 ${activeTab === 'login' ? 'tab-active' : ''}`} onClick={() => setActiveTab('login')}>Login</a>
-                        <a className={`tab flex-1 ${activeTab === 'register' ? 'tab-active' : ''}`} onClick={() => setActiveTab('register')}>Register</a>
-                    </div>
+                    <Typography variant="h5" align="center" fontWeight="bold" sx={{ mb: 3 }}>
+                        {activeTab === 0 ? 'Welcome Back' : 'Create Account'}
+                    </Typography>
 
-                    <h2 className="card-title justify-center mb-4">
-                        {activeTab === 'login' ? 'Welcome Back' : 'Create Account'}
-                    </h2>
+                    <form onSubmit={handleSubmit}>
+                        <TextField
+                            fullWidth
+                            label="Username"
+                            margin="normal"
+                            value={formData.username}
+                            onChange={(e) => setFormData({ ...formData, username: e.target.value })}
+                            required
+                            InputProps={{
+                                startAdornment: <InputAdornment position="start"><PersonIcon color="action" /></InputAdornment>
+                            }}
+                        />
 
-                    <form onSubmit={handleSubmit} className="space-y-4">
-                        <div className="form-control">
-                            <label className="label">
-                                <span className="label-text">Username</span>
-                            </label>
-                            <input
-                                type="text"
-                                placeholder="Unique username"
-                                className="input input-bordered"
-                                value={formData.username}
-                                onChange={(e) => setFormData({ ...formData, username: e.target.value })}
+                        {activeTab === 1 && (
+                            <TextField
+                                fullWidth
+                                label="Email"
+                                type="email"
+                                margin="normal"
+                                value={formData.email}
+                                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                                 required
+                                InputProps={{
+                                    startAdornment: <InputAdornment position="start"><EmailIcon color="action" /></InputAdornment>
+                                }}
                             />
-                        </div>
-
-                        {activeTab === 'register' && (
-                            <div className="form-control animate-in fade-in slide-in-from-top-2">
-                                <label className="label">
-                                    <span className="label-text">Email</span>
-                                </label>
-                                <input
-                                    type="email"
-                                    placeholder="name@example.com"
-                                    className="input input-bordered"
-                                    value={formData.email}
-                                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                                    required
-                                />
-                            </div>
                         )}
 
-                        <div className="form-control">
-                            <label className="label">
-                                <span className="label-text">Password</span>
-                            </label>
-                            <input
-                                type="password"
-                                placeholder="••••••••"
-                                className="input input-bordered"
-                                value={formData.password}
-                                onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                                required
-                            />
-                        </div>
+                        <TextField
+                            fullWidth
+                            label="Password"
+                            type="password"
+                            margin="normal"
+                            value={formData.password}
+                            onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                            required
+                            InputProps={{
+                                startAdornment: <InputAdornment position="start"><LockIcon color="action" /></InputAdornment>
+                            }}
+                        />
 
-                        {error && <div className="text-error text-sm text-center">{error}</div>}
+                        {error && (
+                            <Alert severity="error" sx={{ mt: 2 }}>{error}</Alert>
+                        )}
 
-                        <div className="form-control mt-6">
-                            <button className="btn btn-primary" type="submit" disabled={loading}>
-                                {loading ? <span className="loading loading-spinner"></span> : (activeTab === 'login' ? 'Login' : 'Register')}
-                            </button>
-                        </div>
+                        <Button
+                            type="submit"
+                            fullWidth
+                            variant="contained"
+                            size="large"
+                            sx={{ mt: 4, py: 1.5 }}
+                            disabled={loading}
+                        >
+                            {loading ? <CircularProgress size={24} /> : (activeTab === 0 ? 'Login' : 'Register')}
+                        </Button>
                     </form>
-                </div>
-            </div>
+                </CardContent>
+            </Card>
 
-            <div className="mt-8 text-sm opacity-50">
+            <Typography variant="caption" sx={{ mt: 4, opacity: 0.5 }}>
                 Safe. Secure. Private.
-            </div>
-        </main>
+            </Typography>
+        </Box>
     );
 }

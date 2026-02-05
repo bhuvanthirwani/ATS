@@ -10,15 +10,21 @@ export const metadata: Metadata = {
     description: "Advanced Resume Optimization System",
 };
 
+import ThemeRegistry from "@/components/ThemeRegistry";
+
 export default function RootLayout({
     children,
 }: Readonly<{
     children: React.ReactNode;
 }>) {
     return (
-        <html lang="en" data-theme="dark">
+        <html lang="en">
             <body className={outfit.className}>
-                <QueryProvider>{children}</QueryProvider>
+                <QueryProvider>
+                    <ThemeRegistry>
+                        {children}
+                    </ThemeRegistry>
+                </QueryProvider>
             </body>
         </html>
     );

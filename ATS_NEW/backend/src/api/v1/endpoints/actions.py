@@ -8,7 +8,8 @@ from pydantic import BaseModel
 router = APIRouter()
 
 class AnalyzeRequest(BaseModel):
-    template_filename: str
+    template_filename: str = ""
+    profile_filename: str = ""
     job_description: str
 
 class OptimizeRequest(BaseModel):
@@ -37,9 +38,22 @@ async def analyze_resume(
     
     # 2. Get File Content
     try:
-        resume_path = file_service.get_file_content(workspace_id, req.template_filename, "template")
-        with open(resume_path, "r", encoding="utf-8") as f:
-            resume_text = f.read()
+        if req.profile_filename and req.profile_filename.lower().endswith(".pdf"):
+             # Analyze the Profile PDF
+            import pypdf
+            profile_path = file_service.get_file_content(workspace_id, req.profile_filename, "profile")
+            reader = pypdf.PdfReader(str(profile_path))
+            resume_text = ""
+            for page in reader.pages:
+                resume_text += page.extract_text()
+        elif req.template_filename:
+            # Fallback to Template
+            resume_path = file_service.get_file_content(workspace_id, req.template_filename, "template")
+            with open(resume_path, "r", encoding="utf-8") as f:
+                resume_text = f.read()
+        else:
+            raise HTTPException(status_code=400, detail="Must provide either profile_filename or template_filename")
+
     except Exception as e:
         raise HTTPException(status_code=404, detail=f"File error: {str(e)}")
 
@@ -93,7 +107,7 @@ async def optimize_resume(
         raise HTTPException(status_code=500, detail=f"LLM Error: {str(e)}")
         
     # 4. Compile
-    compile_result = compiler_service.compile_resume(workspace_id, opt_result['new_latex_code'], req.output_filename)
+    compile_result = compiler_service.compile_resume(workspace_id, opt_result.new_latex_code, req.output_filename)
     
     return {
         "optimization": opt_result,
@@ -133,12 +147,12 @@ async def refine_resume(
         raise HTTPException(status_code=500, detail=f"LLM Error: {str(e)}")
 
     # 4. Compile New Version
-    compile_result = compiler_service.compile_resume(workspace_id, refine_result['new_latex_code'], req.output_filename)
+    compile_result = compiler_service.compile_resume(workspace_id, refine_result.new_latex_code, req.output_filename)
     
     # 5. Re-Analyze (Auto-Score)
     # We re-analyze the NEW latex against the SAME job description
     try:
-        new_analysis = await llm_service.analyze_resume(config, refine_result['new_latex_code'], req.job_description)
+        new_analysis = await llm_service.analyze_resume(config, refine_result.new_latex_code, req.job_description)
     except Exception:
         new_analysis = None # Non-blocking if analysis fails
 

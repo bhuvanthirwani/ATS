@@ -1,64 +1,110 @@
 "use client";
 
+import { usePathname } from "next/navigation";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
-import { clearAuth, getUsername } from "@/lib/api";
+import {
+    Drawer,
+    List,
+    ListItem,
+    ListItemButton,
+    ListItemIcon,
+    ListItemText,
+    Typography,
+    Box,
+    Divider,
+    Avatar
+} from "@mui/material";
+import DashboardIcon from "@mui/icons-material/Dashboard";
+import PersonIcon from "@mui/icons-material/Person";
+import SettingsIcon from "@mui/icons-material/Settings";
+import HistoryIcon from "@mui/icons-material/History";
 import { useEffect, useState } from "react";
+import { api } from "@/lib/api";
+
+const drawerWidth = 240;
 
 export default function Sidebar() {
     const pathname = usePathname();
-    const router = useRouter();
-    const [workspaceId, setWorkspaceId] = useState<string | null>(null);
-    const [username, setUsername] = useState<string | null>(null);
+    const [username, setUsername] = useState<string>("");
 
     useEffect(() => {
-        setWorkspaceId(getUsername());
-        setUsername(getUsername());
+        // Fetch username
+        api.get("/auth/user").then(res => setUsername(res.data.username)).catch(() => setUsername("User"));
     }, []);
 
-    const handleLogout = () => {
-        clearAuth();
-        router.push("/");
-    };
-
-    const navItems = [
-        { name: "📊 Dashboard", path: "/dashboard" },
-        { name: "📂 Files", path: "/files" },
-        { name: "⚙️ Settings", path: "/settings" },
+    const menuItems = [
+        { text: "Dashboard", icon: <DashboardIcon />, href: "/dashboard" },
+        { text: "Profiles", icon: <PersonIcon />, href: "/profiles" },
+        { text: "Settings", icon: <SettingsIcon />, href: "/settings" },
+        { text: "History", icon: <HistoryIcon />, href: "/history" },
     ];
 
     return (
-        <div className="w-64 min-h-screen bg-base-200/50 backdrop-blur-md border-r border-white/5 flex flex-col p-4">
-            <div className="mb-8">
-                <h1 className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-primary to-secondary">
-                    ATS PRO
-                </h1>
-                {username && (
-                    <p className="text-xs text-gray-400 mt-2">Logged in as: <span className="font-mono text-primary">{username}</span></p>
-                )}
-            </div>
+        <Drawer
+            variant="permanent"
+            sx={{
+                width: drawerWidth,
+                flexShrink: 0,
+                "& .MuiDrawer-paper": {
+                    width: drawerWidth,
+                    boxSizing: "border-box",
+                },
+            }}
+        >
+            <Box sx={{ p: 3, textAlign: "center" }}>
+                <Typography variant="h5" sx={{ fontWeight: "bold", background: "linear-gradient(90deg, #06b6d4, #8b5cf6)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
+                    ATS AGENT
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                    Resume Tailoring Engine
+                </Typography>
+            </Box>
 
-            <nav className="flex-1 space-y-2">
-                {navItems.map((item) => (
-                    <Link
-                        key={item.path}
-                        href={item.path}
-                        className={`flex items-center px-4 py-3 rounded-xl transition-all duration-200 ${pathname === item.path
-                            ? "bg-primary text-white shadow-lg shadow-primary/20"
-                            : "hover:bg-white/5 text-gray-300 hover:text-white"
-                            }`}
-                    >
-                        {item.name}
-                    </Link>
-                ))}
-            </nav>
+            <Divider />
 
-            <button
-                onClick={handleLogout}
-                className="btn btn-ghost w-full justify-start text-red-400 hover:bg-red-500/10 mt-auto"
-            >
-                🚪 Logout
-            </button>
-        </div>
+            <Box sx={{ p: 2, display: "flex", alignItems: "center", gap: 2 }}>
+                <Avatar sx={{ bgcolor: "secondary.main" }}>{username.charAt(0).toUpperCase()}</Avatar>
+                <Box>
+                    <Typography variant="subtitle2">{username}</Typography>
+                    <Typography variant="caption" color="success.main">● Online</Typography>
+                </Box>
+            </Box>
+
+            <Divider />
+
+            <List>
+                {menuItems.map((item) => {
+                    const active = pathname === item.href;
+                    return (
+                        <ListItem key={item.text} disablePadding>
+                            <ListItemButton
+                                component={Link}
+                                href={item.href}
+                                selected={active}
+                                sx={{
+                                    mx: 1,
+                                    borderRadius: 2,
+                                    "&.Mui-selected": {
+                                        bgcolor: "primary.main",
+                                        color: "white",
+                                        "&:hover": {
+                                            bgcolor: "primary.dark",
+                                        },
+                                        "& .MuiListItemIcon-root": {
+                                            color: "white"
+                                        }
+                                    }
+                                }}
+                            >
+                                <ListItemIcon sx={{ color: active ? "white" : "inherit" }}>
+                                    {item.icon}
+                                </ListItemIcon>
+                                <ListItemText primary={item.text} />
+                            </ListItemButton>
+                        </ListItem>
+                    );
+                })}
+            </List>
+        </Drawer>
     );
 }

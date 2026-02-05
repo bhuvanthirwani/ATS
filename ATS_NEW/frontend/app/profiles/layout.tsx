@@ -1,7 +1,7 @@
 import Sidebar from "@/components/Sidebar";
 import Box from "@mui/material/Box";
 
-export default function SettingsLayout({
+export default function ProfilesLayout({
     children,
 }: {
     children: React.ReactNode;
