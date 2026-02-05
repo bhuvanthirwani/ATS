@@ -5,6 +5,7 @@ services:
     build: 
       context: ./backend
       dockerfile: Dockerfile
+    image: devhaxcodes/ats-backend:latest
     container_name: ats_core_backend
     volumes:
       - ./data:/app/data
@@ -25,6 +26,7 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+    image: devhaxcodes/ats-frontend:latest
     container_name: ats_client_frontend
     environment:
       - NEXT_PUBLIC_API_URL=http://localhost:80/api/v1
