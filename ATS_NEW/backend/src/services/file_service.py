@@ -199,8 +199,62 @@ old_resume_code (LaTeX): {resume_text}"""
     def get_llm_catalog(self):
         # Assumes llms.json is in src/llms.json, same level as main.py/deps.py
         # Current file is src/services/file_service.py -> parent=services, parent.parent=src
-        catalog_path = pathlib.Path(__file__).parent.parent / "llms.json"
+        # Actually it's in /app/llms.json in docker or ../../llms.json relative? 
+        # Let's try project root /app/llms.json
+        catalog_path = pathlib.Path("/app/llms.json")
+        if not catalog_path.exists():
+            # Try local dev path
+            catalog_path = pathlib.Path("llms.json")
+
         if not catalog_path.exists():
              return []
         with open(catalog_path, "r") as f:
             return json.load(f)
+
+    def list_workflow_history(self, user_id: str) -> List[Dict]:
+        """
+        Scans users/{user_id}/output for workflows.
+        Structure: output/
+            {workflow_id}/
+                v1/
+                  file.pdf
+                v2/
+                  file.pdf
+        """
+        user_output = self._get_user_path(user_id) / "output"
+        if not user_output.exists():
+            return []
+
+        history = []
+        # Iterate over workflow_id folders
+        for wf_dir in user_output.iterdir():
+            if wf_dir.is_dir():
+                # Iterate over version folders
+                for ver_dir in wf_dir.iterdir():
+                    if ver_dir.is_dir() and ver_dir.name.startswith("v"):
+                        # Found a version
+                        # Look for PDF/Tex files
+                        files = [f.name for f in ver_dir.iterdir() if f.suffix in {'.pdf', '.tex'}]
+                        if files:
+                            # Get modification time
+                            mod_time = ver_dir.stat().st_mtime
+                            from datetime import datetime
+                            dt = datetime.fromtimestamp(mod_time).strftime('%Y-%m-%d %H:%M')
+                            
+                            # Find main pdf for details
+                            pdf = next((f for f in files if f.endswith(".pdf")), "Unknown.pdf")
+                            
+                            history.append({
+                                "id": f"{wf_dir.name}_{ver_dir.name}",
+                                "workflow_id": wf_dir.name,
+                                "version": ver_dir.name,
+                                "action": f"Optimization {ver_dir.name}",
+                                "details": pdf,
+                                "date": dt,
+                                "status": "Completed", # Inferred
+                                "files": files
+                            })
+        
+        # Sort by date desc
+        history.sort(key=lambda x: x["date"], reverse=True)
+        return history

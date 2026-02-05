@@ -316,7 +316,10 @@ export default function Dashboard() {
                     {/* PREVIEW MODAL */}
                     <Dialog
                         open={isPreviewOpen}
-                        onClose={() => setIsPreviewOpen(false)}
+                        onClose={() => {
+                            setIsPreviewOpen(false);
+                            document.body.style.overflow = "auto";
+                        }}
                         TransitionComponent={Transition}
                         fullScreen
                         PaperProps={{
@@ -324,7 +327,10 @@ export default function Dashboard() {
                         }}
                     >
                         <Box sx={{ display: 'flex', justifyContent: 'flex-end', p: 2, bgcolor: 'white' }}>
-                            <Button onClick={() => setIsPreviewOpen(false)}>Close Preview</Button>
+                            <Button onClick={() => {
+                                setIsPreviewOpen(false);
+                                document.body.style.overflow = "auto";
+                            }}>Close Preview</Button>
                         </Box>
                         <Box sx={{ height: 'calc(100vh - 60px)', p: 2 }}>
                             {optimizationResult && (
@@ -333,6 +339,7 @@ export default function Dashboard() {
                                     jobDescription={jobDescription}
                                     initialScore={optimizationResult.optimization.final_score}
                                     initialWorkflowId={workflowId}
+                                    initialError={optimizationResult.compilation?.success === false ? optimizationResult.compilation?.error : undefined}
                                 />
                             )}
                         </Box>

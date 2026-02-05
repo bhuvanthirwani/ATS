@@ -36,7 +36,7 @@ export default function Sidebar() {
         { text: "Dashboard", icon: <DashboardIcon />, href: "/dashboard" },
         { text: "Profiles", icon: <PersonIcon />, href: "/profiles" },
         { text: "Settings", icon: <SettingsIcon />, href: "/settings" },
-        { text: "History", icon: <HistoryIcon />, href: "/history" },
+        { text: "History", icon: <HistoryIcon />, href: "/dashboard/history" },
     ];
 
     return (

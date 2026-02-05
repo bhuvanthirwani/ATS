@@ -13,9 +13,29 @@ with open(CONFIG_PATH, "r") as f:
     SECRET_KEY = config.get("jwt_secret")
     ALGORITHM = config.get("algorithm", "HS256")
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
+from fastapi import Header, HTTPException, Depends, status, Query
+from fastapi.security import OAuth2PasswordBearer
+from typing import Optional
 
-def get_current_user_id(token: str = Depends(oauth2_scheme)) -> str:
+# ... imports ... (jose, user, etc)
+
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login", auto_error=False)
+
+def get_token_from_header_or_query(
+    header_token: Optional[str] = Depends(oauth2_scheme),
+    query_token: Optional[str] = Query(None, alias="token")
+) -> str:
+    if header_token:
+        return header_token
+    if query_token:
+        return query_token
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Not authenticated",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+
+def get_current_user_id(token: str = Depends(get_token_from_header_or_query)) -> str:
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",

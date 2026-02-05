@@ -23,6 +23,8 @@ class OptimizeRequest(BaseModel):
     output_filename: str
     ignored_keywords: list[str] = [] # Optional list of keywords to remove
 
+from typing import Optional
+
 class RefineRequest(BaseModel):
     workflow_id: str
     current_version: str # e.g. "v1"
@@ -30,6 +32,19 @@ class RefineRequest(BaseModel):
     user_request: str
     output_filename: str
     job_description: str # For re-analysis
+    target_version: Optional[str] = None # NEW: Explicit version control
+
+class CompileRequest(BaseModel):
+    workflow_id: str
+    latex_code: str
+    target_version: str
+    output_filename: str
+
+# ... imports ...
+
+# ... Models (AnalyzeRequest, OptimizeRequest) ...
+
+# ... (RefineRequest, CompileRequest) ...
 
 @router.post("/analyze")
 async def analyze_resume(
@@ -114,9 +129,12 @@ async def optimize_resume(
     workflow_id = str(uuid.uuid4())
     version = "v1"
     
+    # Sanitize Latex (Remove null bytes that might come from LLM)
+    sanitized_latex = opt_result.new_latex_code.replace("\x00", "").replace("\u0000", "")
+    
     compile_result = compiler_service.compile_resume(
         workspace_id, 
-        opt_result.new_latex_code, 
+        sanitized_latex, 
         req.output_filename, # e.g. "Resume_Optimized_v1"
         workflow_id=workflow_id,
         version=version
@@ -128,6 +146,7 @@ async def optimize_resume(
         "workflow_id": workflow_id,
         "version": version
     }
+
 
 @router.post("/refine")
 async def refine_resume(
@@ -163,18 +182,24 @@ async def refine_resume(
         raise HTTPException(status_code=500, detail=f"LLM Error: {str(e)}")
 
     # 4. Determine New Version
-    # e.g. "v1" -> "v2"
-    match = re.search(r"v(\d+)", req.current_version)
-    if match:
-        v_num = int(match.group(1)) + 1
-        new_version = f"v{v_num}"
+    if req.target_version:
+        new_version = req.target_version
     else:
-        new_version = "v2" # Fallback
+        # e.g. "v1" -> "v2"
+        match = re.search(r"v(\d+)", req.current_version)
+        if match:
+            v_num = int(match.group(1)) + 1
+            new_version = f"v{v_num}"
+        else:
+            new_version = "v2" # Fallback
 
     # 5. Compile New Version
+    # Sanitize Latex
+    sanitized_latex = refine_result.new_latex_code.replace("\x00", "").replace("\u0000", "")
+
     compile_result = compiler_service.compile_resume(
         workspace_id, 
-        refine_result.new_latex_code, 
+        sanitized_latex, 
         req.output_filename,
         workflow_id=req.workflow_id,
         version=new_version
@@ -194,3 +219,30 @@ async def refine_resume(
         "workflow_id": req.workflow_id,
         "version": new_version
     }
+
+@router.post("/compile_new_version")
+async def compile_manual_version(
+    req: CompileRequest,
+    workspace_id: str = Depends(get_current_workspace),
+    compiler_service: CompilerService = Depends(lambda: CompilerService())
+):
+    """
+    Manually compile a new version from provided LaTeX code (e.g. user edited).
+    """
+    # Sanitize
+    sanitized_latex = req.latex_code.replace("\x00", "").replace("\u0000", "")
+    
+    compile_result = compiler_service.compile_resume(
+        workspace_id, 
+        sanitized_latex, 
+        req.output_filename,
+        workflow_id=req.workflow_id,
+        version=req.target_version
+    )
+    
+    return {
+        "compilation": compile_result,
+        "workflow_id": req.workflow_id,
+        "version": req.target_version
+    }
+

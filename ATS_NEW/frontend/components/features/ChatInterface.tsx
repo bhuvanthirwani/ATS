@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { api } from "@/lib/api";
-import { useMutation } from "@tanstack/react-query";
+import { api, getAuthToken } from "@/lib/api";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import {
     Box, Paper, Typography, Button, IconButton,
     TextField, CircularProgress, Stack, Chip,
@@ -26,7 +26,9 @@ interface ChatProps {
     baseFilename: string; // The base name without _vX suffix
     jobDescription: string;
     initialScore: number;
+    initialScore: number;
     initialWorkflowId: string; // NEW: Required for fetching files
+    initialError?: string; // NEW: Capture initial compilation error
 }
 
 interface Version {
@@ -35,20 +37,24 @@ interface Version {
     score: number;
     timestamp: string;
     summary: string;
-    status: 'current' | 'generating' | 'completed';
+    status: 'current' | 'generating' | 'completed' | 'error';
+    error?: string; // Specific error message
 }
 
-export default function ResumePreview({ baseFilename, jobDescription, initialScore, initialWorkflowId }: ChatProps) {
+export default function ResumePreview({ baseFilename, jobDescription, initialScore, initialWorkflowId, initialError }: ChatProps) {
     // STATE
     const [viewMode, setViewMode] = useState<'resume' | 'job' | 'code'>('resume');
     const [currentVersionId, setCurrentVersionId] = useState("v1");
     const [workflowId, setWorkflowId] = useState(initialWorkflowId); // Store workflow ID
     const [refinementInput, setRefinementInput] = useState("");
+    const [latexSource, setLatexSource] = useState(""); // For manual editing
+    const [isManualCompiling, setIsManualCompiling] = useState(false);
 
     // Fetch TeX Content
     const getDownloadUrl = (ext: 'pdf' | 'tex' | 'log') => {
         const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
-        return `${baseUrl}/files/workflows/${workflowId}/${currentVersionId}/${currentVersion.filename}.${ext}`;
+        const token = getAuthToken(); // Get token from local storage
+        return `${baseUrl}/files/workflows/${workflowId}/${currentVersionId}/${currentVersion.filename}.${ext}?token=${token}`;
     };
 
     const { data: latexContent, isLoading: isLatexLoading } = useQuery({
@@ -57,10 +63,11 @@ export default function ResumePreview({ baseFilename, jobDescription, initialSco
             if (viewMode !== 'code') return "";
             try {
                 const url = getDownloadUrl('tex');
-                // Fetch text content directly
                 const res = await fetch(url);
                 if (!res.ok) throw new Error("Failed to load LaTeX");
-                return await res.text();
+                const text = await res.text();
+                setLatexSource(text); // Initialize editor
+                return text;
             } catch (e) {
                 console.error(e);
                 return "Error loading LaTeX source.";
@@ -77,7 +84,8 @@ export default function ResumePreview({ baseFilename, jobDescription, initialSco
             score: initialScore,
             timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
             summary: "Initial Optimization",
-            status: 'completed'
+            status: initialError ? 'error' : 'completed',
+            error: initialError
         }
     ]);
 
@@ -107,19 +115,22 @@ export default function ResumePreview({ baseFilename, jobDescription, initialSco
                 current_tex_filename: currentVersion.filename,
                 user_request: userReq,
                 output_filename: nextFilename,
-                job_description: jobDescription
+                job_description: jobDescription,
+                target_version: nextId // Explicitly set next version
             });
             return { ...res.data, versionId: nextId };
         },
         onSuccess: (data) => {
+            const isSuccess = data.compilation?.success !== false;
             setVersions(prev => prev.map(v =>
                 v.id === data.versionId
                     ? {
                         ...v,
                         score: data.analysis?.ats_score || 0,
                         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-                        status: 'completed',
-                        summary: data.refinement.summary
+                        status: isSuccess ? 'completed' : 'error',
+                        summary: data.refinement.summary,
+                        error: isSuccess ? undefined : (data.compilation?.error || "Unknown Verification Error")
                     }
                     : v
             ));
@@ -130,6 +141,56 @@ export default function ResumePreview({ baseFilename, jobDescription, initialSco
             console.error(err);
         }
     });
+
+    // MANUAL COMPILE HANDLER
+    const handleManualCompile = async () => {
+        if (!latexSource.trim()) return;
+        setIsManualCompiling(true);
+        const nextId = `v${versions.length + 1}`; // Ensure always unique next step
+        const nextFilename = `${baseFilename}_${nextId}`;
+
+        // Optimistic Update
+        const newVer: Version = {
+            id: nextId,
+            filename: nextFilename,
+            score: 0,
+            timestamp: "Compiling...",
+            summary: "Manual Edit",
+            status: 'generating'
+        };
+        setVersions(prev => [newVer, ...prev]);
+        setCurrentVersionId(nextId);
+        setViewMode('resume'); // Switch back to see result
+
+        try {
+            const res = await api.post("/actions/compile_new_version", {
+                workflow_id: workflowId,
+                latex_code: latexSource,
+                target_version: nextId,
+                output_filename: nextFilename
+            });
+
+            const isSuccess = res.data.compilation?.success !== false;
+
+            setVersions(prev => prev.map(v =>
+                v.id === nextId ? {
+                    ...v,
+                    timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                    status: isSuccess ? 'completed' : 'error',
+                    error: isSuccess ? undefined : (res.data.compilation?.error || "Unknown Verification Error")
+                } : v
+            ));
+
+        } catch (error: any) {
+            console.error(error);
+            setVersions(prev => prev.map(v =>
+                v.id === nextId ? { ...v, status: 'error', error: "Network Error" } : v
+            ));
+        } finally {
+            setIsManualCompiling(false);
+        }
+    };
+
 
     const handleRefine = () => {
         if (!refinementInput.trim() || refineMutation.isPending) return;
@@ -328,15 +389,38 @@ export default function ResumePreview({ baseFilename, jobDescription, initialSco
                                         <Typography variant="h6" color="error" gutterBottom>
                                             PDF Not Compiled
                                         </Typography>
-                                        <Typography variant="body2" color="text.secondary">
+                                        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
                                             Error in LaTeX Code. Please check the source or try regenerating.
                                         </Typography>
+
+                                        {currentVersion.error && (
+                                            <Paper
+                                                variant="outlined"
+                                                sx={{
+                                                    p: 2,
+                                                    bgcolor: 'grey.900',
+                                                    color: 'error.light',
+                                                    fontFamily: 'monospace',
+                                                    fontSize: '0.75rem',
+                                                    textAlign: 'left',
+                                                    width: '100%',
+                                                    maxHeight: 200,
+                                                    overflow: 'auto',
+                                                    mb: 2
+                                                }}
+                                            >
+                                                <pre style={{ margin: 0, whiteSpace: 'pre-wrap' }}>
+                                                    {currentVersion.error.slice(0, 500)}
+                                                    {currentVersion.error.length > 500 && "..."}
+                                                </pre>
+                                            </Paper>
+                                        )}
+
                                         <Button
                                             href={getDownloadUrl('log')}
                                             target="_blank"
                                             size="small"
                                             color="error"
-                                            sx={{ mt: 2 }}
                                         >
                                             View Compilation Log
                                         </Button>
@@ -357,32 +441,48 @@ export default function ResumePreview({ baseFilename, jobDescription, initialSco
                         </Box>
                     )}
 
-                    {/* LATEX CODE VIEW (Manual Edit Placeholder) */}
+                    {/* LATEX CODE VIEW (Manual Edit) */}
                     {viewMode === 'code' && (
                         <Box sx={{ p: 0, height: '100%', bgcolor: '#1e1e1e', display: 'flex', flexDirection: 'column' }}>
                             <Box sx={{ p: 2, borderBottom: '1px solid #333', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                 <Typography variant="subtitle2" sx={{ color: '#aaa', fontFamily: 'monospace' }}>
                                     {currentVersion.filename}.tex
                                 </Typography>
-                                <Button size="small" startIcon={<EditIcon />} disabled variant="contained" color="warning">
-                                    Manual Edit Coming Soon
+                                <Button
+                                    size="small"
+                                    startIcon={<CheckCircleIcon />}
+                                    onClick={handleManualCompile}
+                                    variant="contained"
+                                    color="success"
+                                    disabled={isManualCompiling}
+                                >
+                                    {isManualCompiling ? "Compiling..." : "Save & Compile New Version"}
                                 </Button>
                             </Box>
-                            <Box sx={{ flex: 1, overflow: 'auto', p: 2 }}>
+                            <Box sx={{ flex: 1, overflow: 'auto', p: 0 }}>
                                 {isLatexLoading ? (
-                                    <CircularProgress size={24} sx={{ color: 'grey.500' }} />
+                                    <Box sx={{ p: 4, textAlign: 'center' }}>
+                                        <CircularProgress size={24} sx={{ color: 'grey.500' }} />
+                                    </Box>
                                 ) : (
-                                    <pre style={{
-                                        margin: 0,
-                                        fontFamily: 'Consolas, Monaco, "Andale Mono", "Ubuntu Mono", monospace',
-                                        fontSize: '13px',
-                                        color: '#d4d4d4',
-                                        lineHeight: 1.5,
-                                        whiteSpace: 'pre-wrap',
-                                        wordBreak: 'break-all'
-                                    }}>
-                                        {latexContent}
-                                    </pre>
+                                    <textarea
+                                        style={{
+                                            width: '100%',
+                                            height: '100%',
+                                            backgroundColor: '#1e1e1e',
+                                            color: '#d4d4d4',
+                                            fontFamily: 'Consolas, Monaco, "Andale Mono", "Ubuntu Mono", monospace',
+                                            fontSize: '13px',
+                                            padding: '16px',
+                                            border: 'none',
+                                            resize: 'none',
+                                            outline: 'none',
+                                            lineHeight: 1.5,
+                                        }}
+                                        value={latexSource}
+                                        onChange={(e) => setLatexSource(e.target.value)}
+                                        spellCheck={false}
+                                    />
                                 )}
                             </Box>
                         </Box>

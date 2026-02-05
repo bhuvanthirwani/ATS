@@ -63,3 +63,10 @@ async def update_config(config: dict, workspace_id: str = Depends(get_current_wo
 @router.get("/llm-catalog")
 async def get_llm_catalog(service: FileService = Depends(lambda: FileService())):
     return service.get_llm_catalog()
+
+@router.get("/history")
+async def get_history(
+    workspace_id: str = Depends(get_current_workspace), 
+    service: FileService = Depends(lambda: FileService())
+):
+    return service.list_workflow_history(workspace_id)
