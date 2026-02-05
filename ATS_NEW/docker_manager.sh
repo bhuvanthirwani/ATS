@@ -30,7 +30,8 @@ show_menu() {
     echo "5) ♻️  Restart (down + up)"
     echo "6) 🧹 Clean Data (down -v)"
     echo "7) ⬆️  Push to Docker Hub"
-    echo "8) 🚪 Exit"
+    echo "8) ⬇️  Pull from Docker Hub"
+    echo "9) 🚪 Exit"
     echo "======================================"
 }
 
@@ -91,7 +92,19 @@ execute_choice() {
                 echo "✅ Done!"
             fi
             ;;
-        8)
+        8|pull)
+            echo "🔑 Logging into Docker Hub..."
+            echo "$DOCKER_PASS" | docker login --username "$DOCKER_USER" --password-stdin
+
+            echo "⬇️  Pulling Backend: $BACKEND_Image..."
+            docker pull "$BACKEND_Image"
+            
+            echo "⬇️  Pulling Frontend: $FRONTEND_Image..."
+            docker pull "$FRONTEND_Image"
+            
+            echo "✅ Done! To run these, you may need to adjust docker-compose.yml to use 'image:' instead of 'build:', or manually tag them."
+            ;;
+        9)
             exit 0
             ;;
         *)
