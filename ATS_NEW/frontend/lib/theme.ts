@@ -4,7 +4,7 @@ import { createTheme } from "@mui/material/styles";
 import { Outfit } from "next/font/google";
 
 const outfit = Outfit({
-    weight: ["300", "400", "600", "700"],
+    weight: ["300", "400", "500", "600", "700"],
     subsets: ["latin"],
     display: "swap",
 });
@@ -12,49 +12,59 @@ const outfit = Outfit({
 export const theme = createTheme({
     typography: {
         fontFamily: outfit.style.fontFamily,
-        h1: { fontSize: "1.8rem", fontWeight: 700 },
-        h2: { fontSize: "1.4rem", fontWeight: 600 },
-        h3: { fontSize: "1.1rem", fontWeight: 600 },
+        h1: { fontSize: "2rem", fontWeight: 700, letterSpacing: "-0.02em" },
+        h2: { fontSize: "1.5rem", fontWeight: 600, letterSpacing: "-0.01em" },
+        h3: { fontSize: "1.25rem", fontWeight: 600 },
         button: { textTransform: "none", fontWeight: 600 },
+        body1: { fontSize: "1rem", lineHeight: 1.6 },
     },
     palette: {
-        mode: "dark",
+        mode: "light",
         primary: {
-            main: "#06b6d4", // Cyan 500
+            main: "#000000", // Pure Black
+            contrastText: "#ffffff",
         },
         secondary: {
-            main: "#8b5cf6", // Violet 500
+            main: "#333333", // Dark Grey
         },
         background: {
-            default: "#0f172a", // Slate 900
-            paper: "#1e293b", // Slate 800
+            default: "#ffffff", // Pure White
+            paper: "#ffffff",
         },
         text: {
-            primary: "#f8fafc", // Slate 50
-            secondary: "#94a3b8", // Slate 400
+            primary: "#000000",
+            secondary: "#525252",
         },
+        divider: "#e5e5e5",
     },
     components: {
         MuiButton: {
             styleOverrides: {
                 root: {
-                    borderRadius: "10px",
-                    background: "linear-gradient(135deg, #06b6d4 0%, #8b5cf6 100%)",
-                    color: "white",
-                    boxShadow: "0 4px 10px rgba(6, 182, 212, 0.15)",
-                    transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
+                    borderRadius: "8px",
+                    boxShadow: "none",
+                    padding: "8px 16px",
+                    // DEFAULT HOVER
                     "&:hover": {
-                        transform: "translateY(-2px)",
-                        boxShadow: "0 8px 20px rgba(139, 92, 246, 0.3)",
+                        boxShadow: "none",
+                        // Do NOT force color/bg here universally as it breaks variants
                     },
                 },
-                containedSecondary: {
-                    background: "transparent",
-                    border: "1px solid rgba(255,255,255,0.1)",
-                    boxShadow: "none",
+                containedPrimary: {
+                    backgroundColor: "#000000",
+                    color: "#ffffff",
                     "&:hover": {
-                        background: "rgba(255,255,255,0.05)",
-                        boxShadow: "none",
+                        backgroundColor: "#333333", // Dark Grey
+                        color: "#ffffff"
+                    },
+                },
+                outlined: {
+                    borderColor: "#e5e5e5",
+                    color: "#000000",
+                    "&:hover": {
+                        borderColor: "#000000",
+                        backgroundColor: "#f5f5f5", // Light Grey
+                        color: "#000000" // Ensure Black Text
                     },
                 },
             },
@@ -63,20 +73,32 @@ export const theme = createTheme({
             styleOverrides: {
                 root: {
                     backgroundImage: "none",
-                    backgroundColor: "rgba(30, 41, 59, 0.5)", // Surface with opacity
-                    backdropFilter: "blur(16px)",
-                    border: "1px solid rgba(255, 255, 255, 0.08)",
-                    borderRadius: "16px",
+                    borderRadius: "12px",
+                    border: "1px solid #e5e5e5",
+                    boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.05)",
                 },
             },
         },
-        MuiDrawer: {
+        MuiChip: {
             styleOverrides: {
-                paper: {
-                    backgroundColor: "#0f172a", // Darker for sidebar
-                    borderRight: "1px solid rgba(255, 255, 255, 0.05)",
+                root: {
+                    fontWeight: 500,
+                    borderRadius: "6px",
                 },
-            },
+                filled: {
+                    backgroundColor: "#f5f5f5",
+                    color: "#000000",
+                }
+            }
         },
+        MuiTextField: {
+            styleOverrides: {
+                root: {
+                    "& .MuiOutlinedInput-root": {
+                        borderRadius: "8px",
+                    }
+                }
+            }
+        }
     },
 });

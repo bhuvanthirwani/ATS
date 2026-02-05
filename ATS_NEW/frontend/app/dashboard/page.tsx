@@ -2,14 +2,15 @@
 
 import { api } from "@/lib/api";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { useState } from "react";
+import React, { useState } from "react";
 import ChatInterface from "@/components/features/ChatInterface";
 import {
     Container, Typography, Box, Stepper, Step, StepLabel,
     Grid, Paper, FormControl, InputLabel, Select, MenuItem,
     TextField, Button, Chip, CircularProgress, Alert,
     Collapse, List, ListItem, ListItemText, Divider,
-    Card, CardContent, Link as MuiLink
+    Card, CardContent, Link as MuiLink,
+    Dialog, DialogContent, Slide
 } from "@mui/material";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import CloudUploadIcon from "@mui/icons-material/CloudUpload";
@@ -49,6 +50,10 @@ export default function Dashboard() {
         onSuccess: (data) => setAnalysisResult(data)
     });
 
+    // State for Preview Modal
+    const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+    const [workflowId, setWorkflowId] = useState("");
+
     const optimizeMutation = useMutation({
         mutationFn: async (variables: { ignored_keywords: string[] }) => {
             const res = await api.post("/actions/optimize", {
@@ -61,7 +66,11 @@ export default function Dashboard() {
             });
             return res.data;
         },
-        onSuccess: (data) => setOptimizationResult(data)
+        onSuccess: (data) => {
+            setOptimizationResult(data);
+            setWorkflowId(data.workflow_id); // Capture ID
+            setIsPreviewOpen(true); // Auto-open on success
+        }
     });
 
     const handleOptimization = () => {
@@ -79,6 +88,14 @@ export default function Dashboard() {
     let activeStep = 0;
     if (analysisResult) activeStep = 1;
     if (optimizationResult) activeStep = 3; // Completed
+
+    // Import Dialog
+    // Moved to top imports
+
+    // Transition
+    const Transition = React.forwardRef(function Transition(props: any, ref: any) {
+        return <Slide direction="up" ref={ref} {...props} />;
+    });
 
     return (
         <Container maxWidth="xl" sx={{ pb: 10 }}>
@@ -250,23 +267,32 @@ export default function Dashboard() {
                     )}
 
                     {optimizationResult && (
-                        <Paper sx={{ p: 3, bgcolor: 'rgba(76, 175, 80, 0.1)', border: '1px solid rgba(76, 175, 80, 0.3)' }}>
+                        <Paper sx={{ p: 3, bgcolor: 'background.paper', border: '1px solid', borderColor: 'divider' }}>
                             <Typography variant="h5" color="success.main" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                                 ✅ Success!
                             </Typography>
 
                             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
                                 <Typography>Your optimized resume is ready.</Typography>
-                                <Button
-                                    component={MuiLink}
-                                    href={`/api/v1/files/output/${customFilename}.pdf`}
-                                    target="_blank"
-                                    variant="contained"
-                                    color="success"
-                                    startIcon={<DownloadIcon />}
-                                >
-                                    Download PDF
-                                </Button>
+                                <Box sx={{ display: 'flex', gap: 2 }}>
+                                    <Button
+                                        variant="outlined"
+                                        startIcon={<AutoFixHighIcon />}
+                                        onClick={() => setIsPreviewOpen(true)}
+                                    >
+                                        Preview & Refine
+                                    </Button>
+                                    <Button
+                                        component={MuiLink}
+                                        href={`/api/v1/files/workflows/${workflowId}/v1/${customFilename}_v1.pdf`}
+                                        target="_blank"
+                                        variant="contained"
+                                        color="success"
+                                        startIcon={<DownloadIcon />}
+                                    >
+                                        Download PDF
+                                    </Button>
+                                </Box>
                             </Box>
 
                             <Card variant="outlined">
@@ -287,15 +313,30 @@ export default function Dashboard() {
                         </Paper>
                     )}
 
-                    {optimizationResult && (
-                        <Box sx={{ mt: 4 }}>
-                            <ChatInterface
-                                baseFilename={customFilename}
-                                jobDescription={jobDescription}
-                                initialScore={optimizationResult.optimization.final_score}
-                            />
+                    {/* PREVIEW MODAL */}
+                    <Dialog
+                        open={isPreviewOpen}
+                        onClose={() => setIsPreviewOpen(false)}
+                        TransitionComponent={Transition}
+                        fullScreen
+                        PaperProps={{
+                            sx: { bgcolor: 'background.default' }
+                        }}
+                    >
+                        <Box sx={{ display: 'flex', justifyContent: 'flex-end', p: 2, bgcolor: 'white' }}>
+                            <Button onClick={() => setIsPreviewOpen(false)}>Close Preview</Button>
                         </Box>
-                    )}
+                        <Box sx={{ height: 'calc(100vh - 60px)', p: 2 }}>
+                            {optimizationResult && (
+                                <ChatInterface
+                                    baseFilename={customFilename}
+                                    jobDescription={jobDescription}
+                                    initialScore={optimizationResult.optimization.final_score}
+                                    initialWorkflowId={workflowId}
+                                />
+                            )}
+                        </Box>
+                    </Dialog>
                 </Grid>
             </Grid>
         </Container>

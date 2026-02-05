@@ -7,6 +7,7 @@ from passlib.context import CryptContext
 from jose import jwt
 from datetime import datetime, timedelta
 import json
+from src.deps import get_current_user
 
 router = APIRouter()
 
@@ -84,3 +85,11 @@ def login(form_data: LoginRequest, db: Session = Depends(get_db)):
         data={"sub": user.username}, expires_delta=access_token_expires
     )
     return {"access_token": access_token, "token_type": "bearer", "username": user.username}
+
+@router.get("/user", response_model=UserCreate)
+def get_current_user_info(current_user: User = Depends(get_current_user)):
+    """
+    Get current logged in user details.
+    """
+    return UserCreate(username=current_user.username, email=current_user.email, password="") # Do not return hash
+

@@ -112,17 +112,52 @@ class LLMService:
             analyze_prompt = user_config.get("prompts", {}).get("analyze_prompt", "")
             if not analyze_prompt:
                  # Fallback default from original app.py
-                 analyze_prompt = """You are an Applicant Tracking System (ATS)... (Truncated for brevity, using truncated version)
-                 OUTPUT FORMAT (STRICT JSON):
-                 {
-                   "ats_score": number,
-                   "missing_keywords": [],
-                   "matched_keywords": [],
-                   "justification": { ... }
-                 }
-                 INPUTS:
-                 RESUME_CODE: {resume_text}
-                 JOB_DESCRIPTION: {job_description}
+                 analyze_prompt = r"""You are an Applicant Tracking System (ATS) used by Fortune-500 companies.
+
+                    Your task is to score how well a candidate’s resume matches a job description using the same logic as modern ATS platforms (Workday, Greenhouse, Lever, iCIMS).
+
+                    You must analyze the resume exactly like an ATS parser would — keyword matching, semantic matching, experience relevance, and role fit — not like a human recruiter.
+
+                    --------------------------------
+                    SCORING METHODOLOGY (must follow strictly)
+
+                    Total Score = 100 points
+                    A. Keyword Match (40 points)
+                    B. Skill Coverage Depth (20 points)
+                    C. Job Title & Role Match (10 points)
+                    D. Experience Relevance (15 points)
+                    E. Education & Domain Fit (5 points)
+                    F. ATS Parsability (10 points)
+
+                    --------------------------------
+                    OUTPUT FORMAT (STRICT JSON — NO EXTRA TEXT)
+
+                    {
+                    "ats_score": number between 0 and 100,
+                    "missing_keywords": [
+                        list of important skills or phrases in JOB_DESCRIPTION that are missing or weak in the resume
+                    ],
+                    "matched_keywords": [
+                        list of important skills that were successfully matched
+                    ],
+                    "justification": {
+                        "keyword_match": "...",
+                        "skill_depth": "...",
+                        "role_fit": "...",
+                        "experience_relevance": "...",
+                        "education_fit": "...",
+                        "parsing_quality": "..."
+                    }
+                    }
+
+                    --------------------------------
+                    INPUTS
+
+                    RESUME_CODE (LaTeX):
+                    {resume_text}
+
+                    JOB_DESCRIPTION:
+                    {job_description}
                  """
             
             # Safe replacement to avoid issues with JSON/LaTeX braces (Legacy Strategy)
@@ -176,28 +211,41 @@ class LLMService:
             
             optimize_prompt = user_config.get("prompts", {}).get("optimize_prompt", "")
             if not optimize_prompt:
-                 optimize_prompt = """You are an expert Resume Optimizer for ATS systems.
-            Your goal is to rewrite the resume to include the missing keywords naturally and improve the ATS score.
-            
-            INPUT DATA:
-            - Initial ATS Score: {initial_ats_score}
-            - Missing Keywords: {missing_keywords}
-            - Matched Keywords: {matched_keywords}
-            - Current Resume (LaTeX): {resume_text}
-            - Job Description: {job_description}
-            
-            INSTRUCTIONS:
-            1. Integrate the missing keywords into the Experience or Skills sections where relevant.
-            2. Do not fabricate experience, but phrased existing skills to match the JD.
-            3. output the FULL valid LaTeX code.
-            
-            OUTPUT FORMAT (Strict JSON):
-            {
-                "final_score": <number 0-100>,
-                "new_latex_code": "<full latex string>",
-                "summary": ["<change 1>", "<change 2>"]
-            }
-            """
+
+                optimize_prompt = r"""You are an ATS-optimization engine used by Big Tech recruiting platforms.
+
+                    Your task is to rewrite a LaTeX resume so that its ATS score becomes at least 90% for a given job description, while preserving structure, honesty, and formatting.
+
+                    --------------------------------
+                    STRICT RULES
+                    1) DO NOT: change section structure, remove existing sections, or rename headers.
+                    2) YOU MUST: Add missing keywords to Skills, Experience, and Projects.
+                    3) If a core skill is missing, enhance bullets with relevant frameworks (e.g., Java -> Spring Boot).
+                    4) If & or % is written in latex code, replace with \&  and \% as these punctuations throws error in Latex.
+                    5) Make sure, You are not making syntactical errors in the latex code.
+                    6) Latex tags should have \tagname instead of \\tagname.
+                    7) \\ is used for Next Line.
+
+                    --------------------------------
+                    REQUIRED OUTPUT (JSON — NO EXTRA TEXT)
+                    {
+                    "final_score": number between 0 and 100,
+                    "new_latex_code": "FULL optimized LaTeX resume",
+                    "summary": [
+                        "Added 'Next.js' to skills",
+                        "Updated project description"
+                    ]
+                    }
+
+                    --------------------------------
+                    INPUTS
+                    initial_ats_score: {initial_ats_score}
+                    missing_keywords: {missing_keywords}
+                    matched_keywords: {matched_keywords}
+                    justification: {justification}
+                    job_description: {job_description}
+                    old_resume_code (LaTeX): {resume_text}
+                """
     
             # Safe replacement logic (Legacy Strategy)
             replacements = {
@@ -250,20 +298,20 @@ class LLMService:
             model_conf = self._get_model_config(user_config)
             llm = self._init_llm(model_conf)
             
-            refine_prompt = """You are a LaTeX Resume Editor.
-            Task: Update the resume code based on the user's request.
-            
-            CURRENT LATEX:
-            {current_tex}
-            
-            USER REQUEST:
-            {user_request}
-            
-            OUTPUT FORMAT (JSON):
-            {{
-                "new_latex_code": "Updated full latex code",
-                "summary": "Updated summary section to include..."
-            }}
+            refine_prompt = r"""You are a LaTeX Resume Editor.
+                Task: Update the resume code based on the user's request.
+                
+                CURRENT LATEX:
+                {current_tex}
+                
+                USER REQUEST:
+                {user_request}
+                
+                OUTPUT FORMAT (JSON):
+                {{
+                    "new_latex_code": "Updated full latex code",
+                    "summary": "Updated summary section to include..."
+                }}
             """
             
             formatted_prompt = refine_prompt.replace("{current_tex}", current_tex)

@@ -66,47 +66,20 @@ export default function Home() {
                 alignItems: 'center',
                 position: 'relative',
                 overflow: 'hidden',
-                background: 'radial-gradient(circle at top right, #1e1b4b 0%, #0f172a 100%)'
+                bgcolor: 'background.default',
+                color: 'text.primary'
             }}
         >
-            {/* Background Blobs */}
-            <Box sx={{
-                position: 'absolute',
-                top: '-10%',
-                left: '-10%',
-                width: '500px',
-                height: '500px',
-                bgcolor: 'primary.main',
-                opacity: 0.2,
-                borderRadius: '50%',
-                filter: 'blur(100px)'
-            }} />
-            <Box sx={{
-                position: 'absolute',
-                bottom: '-10%',
-                right: '-10%',
-                width: '500px',
-                height: '500px',
-                bgcolor: 'secondary.main',
-                opacity: 0.2,
-                borderRadius: '50%',
-                filter: 'blur(100px)'
-            }} />
-
             <Box sx={{ zIndex: 10, textAlign: 'center', mb: 4 }}>
-                <Typography variant="h2" fontWeight="900" sx={{
-                    background: "-webkit-linear-gradient(0deg, #06b6d4, #8b5cf6)",
-                    WebkitBackgroundClip: "text",
-                    WebkitTextFillColor: "transparent"
-                }}>
+                <Typography variant="h2" fontWeight="900" sx={{ letterSpacing: '-0.03em' }}>
                     ATS PRO
                 </Typography>
-                <Typography variant="h6" sx={{ opacity: 0.8, color: 'text.secondary' }}>
+                <Typography variant="h6" sx={{ opacity: 0.6, color: 'text.secondary', fontWeight: 500 }}>
                     AI-Powered Resume Architecture
                 </Typography>
             </Box>
 
-            <Card sx={{ maxWidth: 450, width: '100%', zIndex: 10, bgcolor: 'background.paper', border: '1px solid rgba(255,255,255,0.1)' }}>
+            <Card sx={{ maxWidth: 450, width: '100%', zIndex: 10, bgcolor: 'background.paper', border: '1px solid', borderColor: 'divider', boxShadow: 'none' }}>
                 <CardContent sx={{ p: 4 }}>
                     <Tabs
                         value={activeTab}

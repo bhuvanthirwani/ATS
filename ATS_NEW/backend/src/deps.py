@@ -39,6 +39,7 @@ def get_current_user_id(token: str = Depends(oauth2_scheme)) -> str:
         raise credentials_exception
     return username
 
+
 # Alias for compatibility with existing endpoints calling get_current_workspace
 # This ensures that all existing endpoints now require a valid JWT.
 async def get_current_workspace(current_user: str = Depends(get_current_user_id), db: Session = Depends(get_db)):
@@ -49,4 +50,15 @@ async def get_current_workspace(current_user: str = Depends(get_current_user_id)
     # We return the username as the Workspace ID 
     # Existing logic expects a string.
     return current_user
+
+def get_current_user(username: str = Depends(get_current_user_id), db: Session = Depends(get_db)) -> User:
+    user = db.query(User).filter(User.username == username).first()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User not found",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    return user
+
 

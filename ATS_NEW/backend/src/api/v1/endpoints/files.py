@@ -22,6 +22,20 @@ async def upload_template(
 async def delete_template(filename: str, workspace_id: str = Depends(get_current_workspace), service: FileService = Depends(lambda: FileService())):
     return service.delete_file(workspace_id, filename, "template")
 
+@router.get("/workflows/{workflow_id}/{version}/{filename}")
+async def get_workflow_file(
+    workflow_id: str, 
+    version: str, 
+    filename: str, 
+    workspace_id: str = Depends(get_current_workspace), 
+    service: FileService = Depends(lambda: FileService())
+):
+    """
+    Retrieve a file (pdf, tex, log) for a specific workflow version.
+    """
+    file_path = service.get_file_content(workspace_id, filename, "workflow_output", workflow_id=workflow_id, version=version)
+    return FileResponse(file_path)
+
 @router.get("/profiles")
 async def list_profiles(workspace_id: str = Depends(get_current_workspace), service: FileService = Depends(lambda: FileService())):
     return service.list_files(workspace_id, "profile")

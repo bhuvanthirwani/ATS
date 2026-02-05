@@ -147,7 +147,7 @@ old_resume_code (LaTeX): {resume_text}"""
             
         return [f.name for f in target_dir.iterdir() if f.suffix in extensions]
 
-    def get_file_content(self, user_id: str, filename: str, category: str):
+    def get_file_content(self, user_id: str, filename: str, category: str, workflow_id: str = None, version: str = None):
         user_path = self._get_user_path(user_id)
         
         if category == "template":
@@ -156,12 +156,16 @@ old_resume_code (LaTeX): {resume_text}"""
              target_dir = user_path / "linkedin_profiles"
         elif category == "output":
              target_dir = user_path / "output"
+        elif category == "workflow_output": # NEW
+             if not workflow_id or not version:
+                 raise HTTPException(status_code=400, detail="Workflow ID and Version required for this category")
+             target_dir = user_path / "output" / workflow_id / version
         else:
              raise HTTPException(status_code=400, detail="Invalid category")
 
         file_path = target_dir / filename
         if not file_path.exists():
-            raise HTTPException(status_code=404, detail="File not found")
+            raise HTTPException(status_code=404, detail=f"File not found: {filename}")
         
         return file_path
 
