@@ -1,8 +1,23 @@
 import axios from "axios";
 
+// Dynamic Base URL Strategy
+const getBaseUrl = () => {
+    if (typeof window !== "undefined") {
+        // Client Side
+        // If current host is NOT localhost, assume production domain and use relative path
+        // This allows Nginx to proxy /api/v1 correctly on ats.haxcodes.dev
+        const hostname = window.location.hostname;
+        if (hostname !== "localhost" && hostname !== "127.0.0.1") {
+            return "/api/v1";
+        }
+    }
+    // Server Side or Localhost -> Use Envs or Default
+    return process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
+};
+
 // Create Axios Instance
 export const api = axios.create({
-    baseURL: process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1",
+    baseURL: getBaseUrl(),
     headers: {
         "Content-Type": "application/json",
     },
