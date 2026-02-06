@@ -43,7 +43,7 @@ execute_choice() {
             ;;
         2|up)
             echo "🚀 Starting services..."
-            compose_cmd up -d
+            compose_cmd up
             echo "✅ Services started. Frontend at http://localhost:3000"
             ;;
         3|down)
