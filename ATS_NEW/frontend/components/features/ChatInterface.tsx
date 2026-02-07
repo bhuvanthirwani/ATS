@@ -1,58 +1,23 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { api, getAuthToken } from "@/lib/api";
+import { api, getAuthToken, getBaseUrl } from "@/lib/api";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import {
     Box, Paper, Typography, Button, IconButton,
     TextField, CircularProgress, Stack, Chip,
     Tooltip, Divider, ToggleButtonGroup, ToggleButton
 } from "@mui/material";
-import {
-    Send as SendIcon,
-    Download as DownloadIcon,
-    CheckCircle as CheckCircleIcon,
-    History as HistoryIcon,
-    Description as DescriptionIcon,
-    Code as CodeIcon,
-    PictureAsPdf as PdfIcon,
-    ContentCopy as CopyIcon,
-    OpenInNew as OpenInNewIcon,
-    AutoFixHigh as SparklesIcon,
-    Edit as EditIcon
-} from "@mui/icons-material";
+// ... icons ...
 
-interface ChatProps {
-    baseFilename: string; // The base name without _vX suffix
-    jobDescription: string;
-    initialScore: number;
-    initialScore: number;
-    initialWorkflowId: string; // NEW: Required for fetching files
-    initialError?: string; // NEW: Capture initial compilation error
-}
-
-interface Version {
-    id: string;      // "v1", "v2"
-    filename: string; // "Optimized_Resume_v1"
-    score: number;
-    timestamp: string;
-    summary: string;
-    status: 'current' | 'generating' | 'completed' | 'error';
-    error?: string; // Specific error message
-}
+// ... interfaces ...
 
 export default function ResumePreview({ baseFilename, jobDescription, initialScore, initialWorkflowId, initialError }: ChatProps) {
-    // STATE
-    const [viewMode, setViewMode] = useState<'resume' | 'job' | 'code'>('resume');
-    const [currentVersionId, setCurrentVersionId] = useState("v1");
-    const [workflowId, setWorkflowId] = useState(initialWorkflowId); // Store workflow ID
-    const [refinementInput, setRefinementInput] = useState("");
-    const [latexSource, setLatexSource] = useState(""); // For manual editing
-    const [isManualCompiling, setIsManualCompiling] = useState(false);
+    // ... state ...
 
     // Fetch TeX Content
     const getDownloadUrl = (ext: 'pdf' | 'tex' | 'log') => {
-        const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
+        const baseUrl = getBaseUrl();
         const token = getAuthToken(); // Get token from local storage
         return `${baseUrl}/files/workflows/${workflowId}/${currentVersionId}/${currentVersion.filename}.${ext}?token=${token}`;
     };

@@ -1,27 +1,25 @@
 import axios from "axios";
 
-// Dynamic Base URL Strategy
-const getBaseUrl = () => {
-    if (typeof window !== "undefined") {
-        // Client Side
-        // If current host is NOT localhost, assume production domain and use relative path
-        // This allows Nginx to proxy /api/v1 correctly on ats.haxcodes.dev
-        const hostname = window.location.hostname;
-        if (hostname !== "localhost" && hostname !== "127.0.0.1") {
-            return "/api/v1";
-        }
-    }
-    // Server Side or Localhost -> Use Envs or Default
-    return process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
-};
-
-// Create Axios Instance
+// Create Axios Instance (Initial base URL is placeholder, updated by interceptor)
 export const api = axios.create({
-    baseURL: getBaseUrl(),
     headers: {
         "Content-Type": "application/json",
     },
 });
+
+// Dynamic Base URL Strategy
+export const getBaseUrl = () => {
+    if (typeof window !== "undefined") {
+        // Client Side
+        const hostname = window.location.hostname;
+        if (hostname !== "localhost" && hostname !== "127.0.0.1") {
+            // Production/Remote: Use relative path
+            return "/api/v1";
+        }
+    }
+    // Server Side / Localhost fallback
+    return process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
+};
 
 // Helper to set/get Token
 export const setAuthToken = (token: string, username: string) => {
@@ -54,12 +52,21 @@ export const clearAuth = () => {
     }
 };
 
-// Request Interceptor: Add Bearer Token
+// Request Interceptor: Dynamic URL & Auth
 api.interceptors.request.use((config) => {
+    // 1. Set Base URL Dynamically per request
+    // This fixes SSR/Hydration issues where window might be undefined initially
+    config.baseURL = getBaseUrl();
+
+    // 2. Add Token
     const token = getAuthToken();
     if (token) {
         config.headers.Authorization = `Bearer ${token}`;
     }
+
+    // Debug Log (Optional, remove in strict prod if needed)
+    // console.log(`[API] ${config.method?.toUpperCase()} ${config.baseURL}${config.url}`);
+
     return config;
 });
 

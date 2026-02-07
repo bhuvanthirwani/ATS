@@ -9,7 +9,7 @@ import {
 import HistoryIcon from "@mui/icons-material/History";
 import CheckCircleOutlineIcon from "@mui/icons-material/CheckCircleOutline";
 import { Download as DownloadIcon, Description as DescriptionIcon, PictureAsPdf as PdfIcon } from "@mui/icons-material";
-import { api, getAuthToken } from "@/lib/api";
+import { api, getAuthToken, getBaseUrl } from "@/lib/api";
 
 interface HistoryItem {
     id: string;
@@ -42,7 +42,7 @@ export default function HistoryPage() {
     }, []);
 
     const getDownloadUrl = (workflowId: string, version: string, filename: string) => {
-        const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
+        const baseUrl = getBaseUrl();
         const token = getAuthToken();
         return `${baseUrl}/files/workflows/${workflowId}/${version}/${filename}?token=${token}`;
     };
