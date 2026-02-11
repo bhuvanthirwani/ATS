@@ -39,7 +39,7 @@ execute_choice() {
     case $1 in
         1|build)
             echo "🔨 Building images..."
-            compose_cmd build
+            compose_cmd build --no-cache
             ;;
         2|up)
             echo "🚀 Starting services..."

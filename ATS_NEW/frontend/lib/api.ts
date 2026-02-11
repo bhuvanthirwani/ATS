@@ -9,16 +9,13 @@ export const api = axios.create({
 
 // Dynamic Base URL Strategy
 export const getBaseUrl = () => {
-    if (typeof window !== "undefined") {
-        // Client Side
-        const hostname = window.location.hostname;
-        if (hostname !== "localhost" && hostname !== "127.0.0.1") {
-            // Production/Remote: Use relative path
-            return "/api/v1";
-        }
+    // Server Side (SSR): Must use internal Docker networking
+    if (typeof window === "undefined") {
+        return process.env.INTERNAL_API_URL || "http://backend:8000/api/v1";
     }
-    // Server Side / Localhost fallback
-    return process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
+    // Client Side: Use relative path (or env override for local dev)
+    // Directly return relative path to respect current origin (browser href)
+    return "/api/v1";
 };
 
 // Helper to set/get Token
