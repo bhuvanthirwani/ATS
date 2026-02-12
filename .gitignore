@@ -38,7 +38,7 @@ configs/*
 *.node_modules/*
 *.next/*
 
-ATS_NEW/backend/configs/*
-ATS_NEW/backend/users/*
-ATS_NEW/frontend/node_modules/*
-ATS_NEW/frontend/.next/*
+*configs/*
+*users/*
+*node_modules/*
+*next/*

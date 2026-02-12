@@ -1,12 +1,73 @@
+version: '3.8'
+
 services:
-  ats-app:
-    image: devhaxcodes/ats-app:latest
-    build: .
-    ports:
-      - "8501:8501"
+  backend:
+    build: 
+      context: ./backend
+      dockerfile: Dockerfile
+    image: devhaxcodes/ats-backend:latest
+    container_name: ats_core_backend
     volumes:
-      - ./users:/app/users
-      - ./configs:/app/configs
-      - ./DB:/app/DB
-      - ./llms.json:/app/llms.json
+      - ./data:/app/data
+      - ./backend/src:/app/src
+    environment:
+      - APP_ENV=production
+      - DATA_DIR=/app/data
+    ports:
+      - "8000:8000"
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    image: devhaxcodes/ats-frontend:latest
+    container_name: ats_client_frontend
+    environment:
+      - NEXT_PUBLIC_API_URL=/api/v1
+      - INTERNAL_API_URL=http://backend:8000/api/v1
+    ports:
+      - "3000:3000"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:3000"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    depends_on:
+      - backend
+
+  redis:
+    image: redis:alpine
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+
+  worker:
+    build: 
+      context: ./backend
+      dockerfile: Dockerfile
+    image: devhaxcodes/ats-backend:latest
+    container_name: ats_worker
+    command: celery -A src.worker.celery_app worker --loglevel=info
+    volumes:
+      - ./data:/app/data
+      - ./backend/src:/app/src
+    environment:
+      - APP_ENV=production
+      - DATA_DIR=/app/data
+      - REDIS_URL=redis://redis:6379/0
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+    depends_on:
+      - backend
+      - redis
+    restart: unless-stopped
+
+volumes:
+  data:
