@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import {
     Box, Typography, List, ListItem, ListItemText,
-    Chip, CircularProgress, Paper, IconButton, Tooltip
+    Chip, CircularProgress, Paper, IconButton, Tooltip, Button
 } from "@mui/material";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
@@ -83,12 +83,23 @@ export default function JobsList({ onSelectJob, activeJobId }: JobsListProps) {
                         </ListItem>
                     ))}
                     {jobs?.length === 0 && (
-                        <Typography variant="body2" color="text.secondary" align="center" sx={{ mt: 4 }}>
-                            No jobs found.
-                        </Typography>
+                        <Box sx={{ p: 2, textAlign: 'center' }}>
+                            <Typography variant="body2" color="text.secondary">
+                                No recent jobs found.
+                            </Typography>
+                        </Box>
                     )}
                 </List>
             )}
+            <Box sx={{ p: 2, borderTop: '1px solid', borderColor: 'divider' }}>
+                <Button
+                    fullWidth
+                    variant="text"
+                    href="/history"
+                >
+                    View All Activity
+                </Button>
+            </Box>
         </Paper>
     );
 }

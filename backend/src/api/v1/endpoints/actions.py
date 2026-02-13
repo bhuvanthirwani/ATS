@@ -1,5 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Body
-from src.deps import get_current_workspace
+from sqlalchemy.orm import Session
+from src.deps import get_current_workspace, get_current_user
+from src.db.session import get_db
 from src.services.file_service import FileService
 from src.services.llm_service import LLMService
 from src.services.compiler_service import CompilerService
@@ -91,18 +93,28 @@ async def optimize_resume(
     req: OptimizeRequest,
     workspace_id: str = Depends(get_current_workspace),
     file_service: FileService = Depends(lambda: FileService()),
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
 ):
-    # 1. Config
-    config = file_service.get_config(workspace_id)
+    # 1. Create Workflow in DB
+    from src.db.models import Workflow, Job
+    import uuid
+    
+    workflow = Workflow(
+        id=str(uuid.uuid4()),
+        user_id=current_user.id,
+        job_description=req.job_description,
+        profile_filename=req.profile_filename,
+        template_filename=req.template_filename
+    )
+    db.add(workflow)
+    db.commit()
+    db.refresh(workflow)
     
     # 2. Enqueue Task
     from src.worker import optimize_resume_task
     import redis
     import os
-    
-    # Prepare arguments
-    # Note: We pass filenames, so worker can read them. 
-    # Worker needs access to the same storage (volume shared).
     
     task = optimize_resume_task.delay(
         workspace_id=workspace_id,
@@ -111,129 +123,132 @@ async def optimize_resume(
         job_description=req.job_description,
         analysis_result=req.analysis_result,
         output_filename=req.output_filename,
-        ignored_keywords=req.ignored_keywords
+        ignored_keywords=req.ignored_keywords,
+        workflow_id=workflow.id # Pass DB ID
     )
     
-    # 3. Store Job ID in User History (Redis)
-    redis_url = os.getenv("REDIS_URL", "redis://redis:6379/0")
-    r = redis.Redis.from_url(redis_url, decode_responses=True)
-    r.lpush(f"user:{workspace_id}:jobs", task.id)
-    r.ltrim(f"user:{workspace_id}:jobs", 0, 19) # Keep last 20
+    # 3. Create Job Record in DB
+    job = Job(
+        id=task.id,
+        workflow_id=workflow.id,
+        status="PENDING"
+    )
+    db.add(job)
+    db.commit()
     
     return {
         "job_id": task.id,
+        "workflow_id": workflow.id,
         "status": "processing"
     }
 
-@router.get("/jobs")
-async def list_jobs(workspace_id: str = Depends(get_current_workspace)):
-    import redis
-    import os
-    from celery.result import AsyncResult
-    from src.worker import celery_app
+@router.get("/workflows")
+def list_workflows(
+    skip: int = 0, 
+    limit: int = 20, 
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    from src.db.models import Workflow
+    from sqlalchemy.orm import joinedload
     
-    redis_url = os.getenv("REDIS_URL", "redis://redis:6379/0")
-    r = redis.Redis.from_url(redis_url, decode_responses=True)
+    workflows = db.query(Workflow)\
+        .options(joinedload(Workflow.jobs))\
+        .filter(Workflow.user_id == current_user.id)\
+        .order_by(Workflow.created_at.desc())\
+        .offset(skip)\
+        .limit(limit)\
+        .all()
+    return workflows
+
+@router.get("/workflows/{workflow_id}")
+def get_workflow_details(
+    workflow_id: str,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    from src.db.models import Workflow, Job
+    from sqlalchemy.orm import joinedload
     
-    task_ids = r.lrange(f"user:{workspace_id}:jobs", 0, -1)
-    jobs = []
-    
-    for tid in task_ids:
-        res = AsyncResult(tid, app=celery_app)
-        # Basic info
-        jobs.append({
-            "job_id": tid,
-            "status": res.status,
-            "date": "N/A" # Redis doesn't store this natively without partial
-        })
+    workflow = db.query(Workflow)\
+        .options(joinedload(Workflow.jobs))\
+        .filter(Workflow.id == workflow_id, Workflow.user_id == current_user.id)\
+        .first()
         
-    return jobs
+    if not workflow:
+        raise HTTPException(status_code=404, detail="Workflow not found")
+        
+    return workflow
 
 @router.get("/jobs/{job_id}")
-async def get_job_status(job_id: str, workspace_id: str = Depends(get_current_workspace)):
-    from celery.result import AsyncResult
-    from src.worker import celery_app
+def get_job_status(
+    job_id: str, 
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    from src.db.models import Job
     
-    res = AsyncResult(job_id, app=celery_app)
+    job = db.query(Job).filter(Job.id == job_id).first()
+    if not job:
+         raise HTTPException(status_code=404, detail="Job not found")
+         
+    # Optional: Verify user ownership via workflow->user if strict security needed
     
-    if res.ready():
-        if res.successful():
-            return {"status": "completed", "result": res.result}
-        else:
-            return {"status": "failed", "error": str(res.result)}
-    else:
-        return {"status": "processing"}
+    return {
+        "job_id": job.id,
+        "status": job.status,
+        "result": job.result_data,
+        "error": job.error_message,
+        "workflow_id": job.workflow_id
+    }
 
 @router.post("/refine")
 async def refine_resume(
     req: RefineRequest,
     workspace_id: str = Depends(get_current_workspace),
-    file_service: FileService = Depends(lambda: FileService()),
-    llm_service: LLMService = Depends(lambda: LLMService()),
-    compiler_service: CompilerService = Depends(lambda: CompilerService())
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
 ):
-    # 1. Config
-    config = file_service.get_config(workspace_id)
-    
-    # 2. Get Current Tex from Workflow Storage
-    try:
-        # We need the tex file from the previous version
-        tex_path = file_service.get_file_content(
-            workspace_id, 
-            req.current_tex_filename + ".tex", 
-            "workflow_output", 
-            workflow_id=req.workflow_id, 
-            version=req.current_version
-        )
-             
-        with open(tex_path, "r", encoding="utf-8") as f:
-            current_tex = f.read()
-    except Exception as e:
-        raise HTTPException(status_code=404, detail=f"File not found: {str(e)}")
+    from src.db.models import Job
+    from src.worker import refine_resume_task
 
-    # 3. Refine (LLM)
-    try:
-        refine_result = await llm_service.refine_resume(config, current_tex, req.user_request)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"LLM Error: {str(e)}")
-
-    # 4. Determine New Version
+    # Determine target version
     if req.target_version:
         new_version = req.target_version
     else:
-        # e.g. "v1" -> "v2"
         match = re.search(r"v(\d+)", req.current_version)
         if match:
             v_num = int(match.group(1)) + 1
             new_version = f"v{v_num}"
         else:
-            new_version = "v2" # Fallback
+            new_version = "v2"
 
-    # 5. Compile New Version
-    # Sanitize Latex
-    sanitized_latex = refine_result.new_latex_code.replace("\x00", "").replace("\u0000", "")
-
-    compile_result = compiler_service.compile_resume(
-        workspace_id, 
-        sanitized_latex, 
-        req.output_filename,
+    # Enqueue Celery Task
+    task = refine_resume_task.delay(
+        workspace_id=workspace_id,
         workflow_id=req.workflow_id,
-        version=new_version
+        current_version=req.current_version,
+        current_tex_filename=req.current_tex_filename,
+        user_request=req.user_request,
+        output_filename=req.output_filename,
+        job_description=req.job_description,
+        target_version=new_version
     )
-    
-    # 6. Re-Analyze (Auto-Score)
-    # We re-analyze the NEW latex against the SAME job description
-    try:
-        new_analysis = await llm_service.analyze_resume(config, refine_result.new_latex_code, req.job_description)
-    except Exception:
-        new_analysis = None
+
+    # Create Job Record in DB
+    job = Job(
+        id=task.id,
+        workflow_id=req.workflow_id,
+        status="PENDING"
+    )
+    db.add(job)
+    db.commit()
 
     return {
-        "refinement": refine_result,
-        "compilation": compile_result,
-        "analysis": new_analysis,
+        "job_id": task.id,
         "workflow_id": req.workflow_id,
-        "version": new_version
+        "version": new_version,
+        "status": "processing"
     }
 
 @router.post("/compile_new_version")

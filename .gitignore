@@ -40,5 +40,5 @@ configs/*
 
 *configs/*
 *users/*
-*node_modules/*
+frontend/node_modules/*
 *next/*

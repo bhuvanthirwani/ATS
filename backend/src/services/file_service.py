@@ -197,17 +197,18 @@ old_resume_code (LaTeX): {resume_text}"""
         return db.update_config(user_id, new_config)
 
     def get_llm_catalog(self):
-        # Assumes llms.json is in src/llms.json, same level as main.py/deps.py
-        # Current file is src/services/file_service.py -> parent=services, parent.parent=src
-        # Actually it's in /app/llms.json in docker or ../../llms.json relative? 
-        # Let's try project root /app/llms.json
-        catalog_path = pathlib.Path("/app/llms.json")
-        if not catalog_path.exists():
-            # Try local dev path
-            catalog_path = pathlib.Path("llms.json")
+        # llms.json lives alongside this service file's parent dir (src/llms.json)
+        # __file__ = src/services/file_service.py -> parent.parent = src/
+        catalog_path = pathlib.Path(__file__).parent.parent / "llms.json"
 
         if not catalog_path.exists():
-             return []
+            # Fallback: Docker /app/src/llms.json
+            catalog_path = pathlib.Path("/app/src/llms.json")
+
+        if not catalog_path.exists():
+            print(f"[ERROR] llms.json not found. Searched: {pathlib.Path(__file__).parent.parent / 'llms.json'}, /app/src/llms.json")
+            return []
+
         with open(catalog_path, "r") as f:
             return json.load(f)
 

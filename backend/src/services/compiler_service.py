@@ -55,14 +55,16 @@ class CompilerService:
                 return {
                     "success": False, 
                     "error": result.stdout.decode('utf-8', errors='ignore')[-500:],
-                    "log_tail": log_content
+                    "log_tail": log_content,
+                    "output_filename": filename_base
                 }
                 
             return {
                 "success": True, 
                 "pdf_path": str(pdf_file),
                 "tex_path": str(tex_file),
-                "log_path": str(log_file)
+                "log_path": str(log_file),
+                "output_filename": filename_base
             }
         except Exception as e:
-             return {"success": False, "error": str(e)}
+             return {"success": False, "error": str(e), "output_filename": filename_base}

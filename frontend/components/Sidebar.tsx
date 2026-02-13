@@ -36,7 +36,7 @@ export default function Sidebar() {
         { text: "Dashboard", icon: <DashboardIcon />, href: "/dashboard" },
         { text: "Profiles", icon: <PersonIcon />, href: "/profiles" },
         { text: "Settings", icon: <SettingsIcon />, href: "/settings" },
-        { text: "History", icon: <HistoryIcon />, href: "/dashboard/history" },
+        { text: "History", icon: <HistoryIcon />, href: "/history" },
     ];
 
     return (
@@ -74,7 +74,7 @@ export default function Sidebar() {
 
             <List>
                 {menuItems.map((item) => {
-                    const active = pathname === item.href;
+                    const active = pathname === item.href || pathname.startsWith(item.href + '/');
                     return (
                         <ListItem key={item.text} disablePadding>
                             <ListItemButton

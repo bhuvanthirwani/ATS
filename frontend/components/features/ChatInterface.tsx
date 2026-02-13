@@ -8,12 +8,48 @@ import {
     TextField, CircularProgress, Stack, Chip,
     Tooltip, Divider, ToggleButtonGroup, ToggleButton
 } from "@mui/material";
-// ... icons ...
+import HistoryIcon from "@mui/icons-material/History";
+import PictureAsPdfIcon from "@mui/icons-material/PictureAsPdf";
+import DescriptionIcon from "@mui/icons-material/Description";
+import CodeIcon from "@mui/icons-material/Code";
+import ContentCopyIcon from "@mui/icons-material/ContentCopy";
+import OpenInNewIcon from "@mui/icons-material/OpenInNew";
+import DownloadIcon from "@mui/icons-material/Download";
+import CheckCircleIcon from "@mui/icons-material/CheckCircle";
+import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
 
-// ... interfaces ...
+// Alias icons for usage in JSX
+const PdfIcon = PictureAsPdfIcon;
+const CopyIcon = ContentCopyIcon;
+const SparklesIcon = AutoAwesomeIcon;
 
-export default function ResumePreview({ baseFilename, jobDescription, initialScore, initialWorkflowId, initialError }: ChatProps) {
+interface ChatProps {
+    baseFilename: string;
+    jobDescription: string;
+    initialScore: number;
+    initialWorkflowId: string;
+    initialError?: string;
+    currentVersion?: string;
+    initialVersion?: string; // New prop
+}
+
+interface Version {
+    id: string;
+    filename: string;
+    score: number;
+    timestamp: string;
+    summary: string;
+    status: 'completed' | 'generating' | 'error';
+    error?: string;
+}
+export default function ResumePreview({ baseFilename, jobDescription, initialScore, initialWorkflowId, initialError, initialVersion = "v1" }: ChatProps) {
     // ... state ...
+    const [workflowId, setWorkflowId] = useState(initialWorkflowId);
+    const [currentVersionId, setCurrentVersionId] = useState(initialVersion);
+    const [viewMode, setViewMode] = useState<"resume" | "job" | "code">("resume");
+    const [latexSource, setLatexSource] = useState("");
+    const [refinementInput, setRefinementInput] = useState("");
+    const [isManualCompiling, setIsManualCompiling] = useState(false);
 
     // Fetch TeX Content
     const getDownloadUrl = (ext: 'pdf' | 'tex' | 'log') => {
@@ -44,7 +80,7 @@ export default function ResumePreview({ baseFilename, jobDescription, initialSco
     // Initial Version
     const [versions, setVersions] = useState<Version[]>([
         {
-            id: "v1",
+            id: initialVersion,
             filename: baseFilename, // e.g., "Resume_Optimized"
             score: initialScore,
             timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
@@ -56,11 +92,58 @@ export default function ResumePreview({ baseFilename, jobDescription, initialSco
 
     const currentVersion = versions.find(v => v.id === currentVersionId) || versions[0];
 
+    // Helper to get next version ID
+    const getNextVersionId = () => {
+        const maxV = versions.reduce((max, v) => {
+            const match = v.id.match(/^v(\d+)$/);
+            return match ? Math.max(max, parseInt(match[1])) : max;
+        }, 0);
+        return `v${maxV + 1}`;
+    };
+
+    // Poll for refine job result
+    const pollRefineJob = (jobId: string, versionId: string) => {
+        const interval = setInterval(async () => {
+            try {
+                const res = await api.get(`/actions/jobs/${jobId}`);
+                const data = res.data;
+
+                if (data.status === "SUCCESS" || data.status === "completed") {
+                    clearInterval(interval);
+                    const result = data.result;
+                    const isSuccess = result?.compilation?.success !== false;
+                    setVersions(prev => prev.map(v =>
+                        v.id === versionId
+                            ? {
+                                ...v,
+                                score: result?.analysis?.ats_score || 0,
+                                timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                                status: isSuccess ? 'completed' : 'error',
+                                summary: result?.refinement?.summary || v.summary,
+                                filename: result?.compilation?.output_filename || v.filename,
+                                error: isSuccess ? undefined : (result?.compilation?.error || "Unknown Error")
+                            }
+                            : v
+                    ));
+                } else if (data.status === "FAILED" || data.status === "FAILURE") {
+                    clearInterval(interval);
+                    setVersions(prev => prev.map(v =>
+                        v.id === versionId
+                            ? { ...v, status: 'error', timestamp: 'Failed', error: data.error || "Refinement failed" }
+                            : v
+                    ));
+                }
+            } catch (err) {
+                console.error("Polling error:", err);
+            }
+        }, 2000);
+    };
+
     // MUTATION
     const refineMutation = useMutation({
         mutationFn: async (userReq: string) => {
-            const nextId = `v${versions.length + 1}`;
-            const nextFilename = `${baseFilename}_${nextId}`; // "Resume_Optimized_v2"
+            const nextId = getNextVersionId();
+            const nextFilename = `${baseFilename.replace(/_v\d+$/, '')}_${nextId}`; // "Resume_Optimized_v2" - clean base first just in case
 
             // Optimistic Update
             const newVer: Version = {
@@ -75,34 +158,24 @@ export default function ResumePreview({ baseFilename, jobDescription, initialSco
             setCurrentVersionId(nextId);
 
             const res = await api.post("/actions/refine", {
-                workflow_id: workflowId, // Send ID
-                current_version: currentVersionId, // Send current version e.g "v1"
+                workflow_id: workflowId,
+                current_version: currentVersionId,
                 current_tex_filename: currentVersion.filename,
                 user_request: userReq,
                 output_filename: nextFilename,
                 job_description: jobDescription,
-                target_version: nextId // Explicitly set next version
+                target_version: nextId
             });
             return { ...res.data, versionId: nextId };
         },
         onSuccess: (data) => {
-            const isSuccess = data.compilation?.success !== false;
-            setVersions(prev => prev.map(v =>
-                v.id === data.versionId
-                    ? {
-                        ...v,
-                        score: data.analysis?.ats_score || 0,
-                        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-                        status: isSuccess ? 'completed' : 'error',
-                        summary: data.refinement.summary,
-                        error: isSuccess ? undefined : (data.compilation?.error || "Unknown Verification Error")
-                    }
-                    : v
-            ));
+            // Start polling for the async job result
+            if (data.job_id) {
+                pollRefineJob(data.job_id, data.versionId);
+            }
             setRefinementInput("");
         },
         onError: (err) => {
-            // Revert or mark error
             console.error(err);
         }
     });
@@ -111,8 +184,8 @@ export default function ResumePreview({ baseFilename, jobDescription, initialSco
     const handleManualCompile = async () => {
         if (!latexSource.trim()) return;
         setIsManualCompiling(true);
-        const nextId = `v${versions.length + 1}`; // Ensure always unique next step
-        const nextFilename = `${baseFilename}_${nextId}`;
+        const nextId = getNextVersionId();
+        const nextFilename = `${baseFilename.replace(/_v\d+$/, '')}_${nextId}`;
 
         // Optimistic Update
         const newVer: Version = {
@@ -307,6 +380,16 @@ export default function ResumePreview({ baseFilename, jobDescription, initialSco
                             sx={{ color: 'text.secondary', borderColor: 'divider' }}
                         >
                             ChatGPT
+                        </Button>
+                        <Button
+                            variant="outlined"
+                            size="small"
+                            startIcon={<DescriptionIcon />}
+                            href={getDownloadUrl('tex')}
+                            target="_blank"
+                            sx={{ color: 'text.secondary', borderColor: 'divider' }}
+                        >
+                            TeX
                         </Button>
                         <Button
                             variant="contained"

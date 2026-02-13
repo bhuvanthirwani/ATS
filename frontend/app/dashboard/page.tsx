@@ -24,7 +24,10 @@ const Transition = React.forwardRef(function Transition(props: any, ref: any) {
     return <Slide direction="up" ref={ref} {...props} />;
 });
 
+import { useRouter } from "next/navigation";
+
 export default function Dashboard() {
+    const router = useRouter();
     const [jobDescription, setJobDescription] = useState("");
     const [selectedTemplate, setSelectedTemplate] = useState("");
     const [selectedProfile, setSelectedProfile] = useState("");
@@ -55,10 +58,9 @@ export default function Dashboard() {
 
             if (data.status === "completed" || data.status === "SUCCESS") {
                 setOptimizationResult(data.result);
-                // Also open preview if it was the just-triggered job
-                if (!optimizationResult) {
-                    setIsPreviewOpen(true);
-                }
+                // Redirect to the full history/details page
+                // Force navigation using window.location to Ensure redirect happens
+                window.location.assign(`/history/${data.workflow_id}`);
                 setActiveJobId(null); // Stop polling
             } else if (data.status === "failed" || data.status === "FAILURE") {
                 setActiveJobId(null); // Stop polling

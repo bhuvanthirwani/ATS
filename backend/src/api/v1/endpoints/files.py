@@ -34,7 +34,18 @@ async def get_workflow_file(
     Retrieve a file (pdf, tex, log) for a specific workflow version.
     """
     file_path = service.get_file_content(workspace_id, filename, "workflow_output", workflow_id=workflow_id, version=version)
-    return FileResponse(file_path)
+    
+    # Determine disposition
+    media_type = "application/pdf" if filename.lower().endswith(".pdf") else "application/octet-stream"
+    disposition = "inline" if filename.lower().endswith(".pdf") else "attachment"
+    
+    print(f"[DEBUG] Serving file: {filename}, Disposition: {disposition}, Path: {file_path}")
+
+    return FileResponse(
+        file_path, 
+        media_type=media_type, 
+        headers={"Content-Disposition": f'{disposition}; filename="{filename}"'}
+    )
 
 @router.get("/profiles")
 async def list_profiles(workspace_id: str = Depends(get_current_workspace), service: FileService = Depends(lambda: FileService())):

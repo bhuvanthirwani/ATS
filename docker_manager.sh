@@ -32,6 +32,7 @@ show_menu() {
     echo "7) ⬆️  Push to Docker Hub"
     echo "8) ⬇️  Pull from Docker Hub"
     echo "9) 🚪 Exit"
+    echo "10) 🛠️  Run in Dev Mode (hot-reload)"
     echo "======================================"
 }
 
@@ -39,7 +40,7 @@ execute_choice() {
     case $1 in
         1|build)
             echo "🔨 Building images..."
-            compose_cmd build --no-cache
+            compose_cmd build
             ;;
         2|up)
             echo "🚀 Starting services..."
@@ -106,6 +107,15 @@ execute_choice() {
             ;;
         9)
             exit 0
+            ;;
+        10|dev)
+            echo "🛠️  Starting in Dev Mode... (Cleaning up first)"
+            # Force remove known named containers to prevent conflicts
+            # We also try to remove by project name prefix just in case
+            docker rm -f ats_core_backend ats_client_frontend ats_worker ats-redis-1 >/dev/null 2>&1
+            docker rm -f /ats_client_frontend /ats_core_backend /ats_worker >/dev/null 2>&1
+            compose_cmd down --remove-orphans
+            compose_cmd -f docker-compose.yml -f docker-compose.dev.yml up --build
             ;;
         *)
             echo "❌ Invalid option."

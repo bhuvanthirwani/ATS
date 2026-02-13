@@ -1,0 +1,45 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    image: devhaxcodes/ats-backend:dev
+    command: uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload
+    volumes:
+      - ./backend:/app  # Mount entire backend folder so we can edit files
+      - /app/src/__pycache__
+    environment:
+      - APP_ENV=development
+      - PYTHONPATH=/app/src
+
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    image: devhaxcodes/ats-worker:dev
+    # Using watchmedo from watchdog (usually installed with celery[redis] or separately)
+    # If not installed, we might default to just running worker without auto-reload
+    command: celery -A src.worker.celery_app worker --loglevel=info
+    volumes:
+      - ./backend:/app
+    environment:
+      - APP_ENV=development
+      - PYTHONPATH=/app/src
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      target: deps # Use the deps stage as base, but we need to install on top
+    image: devhaxcodes/ats-frontend:dev
+    command: sh -c "npm run dev" 
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules # key: keep node_modules internal to container
+      - /app/.next # keep build artifacts internal
+    environment:
+      - NODE_ENV=development
+    ports:
+      - "3000:3000"
