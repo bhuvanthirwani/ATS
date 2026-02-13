@@ -37,14 +37,21 @@ async def get_workflow_file(
     
     # Determine disposition
     media_type = "application/pdf" if filename.lower().endswith(".pdf") else "application/octet-stream"
-    disposition = "inline" if filename.lower().endswith(".pdf") else "attachment"
     
-    print(f"[DEBUG] Serving file: {filename}, Disposition: {disposition}, Path: {file_path}")
+    headers = {}
+    if not filename.lower().endswith(".pdf"):
+        headers["Content-Disposition"] = f'attachment; filename="{filename}"'
+    else:
+        # For PDF preview, do NOT send Content-Disposition header at all (matches AutoApply logic)
+        # This lets browser decide (usually inline preview) without forcing filename
+        pass
+
+    print(f"[DEBUG] Serving file: {filename}, Content-Type: {media_type}, Headers: {headers}")
 
     return FileResponse(
         file_path, 
         media_type=media_type, 
-        headers={"Content-Disposition": f'{disposition}; filename="{filename}"'}
+        headers=headers
     )
 
 @router.get("/profiles")

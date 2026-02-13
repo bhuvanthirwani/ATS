@@ -101,6 +101,14 @@ export default function ResumePreview({ baseFilename, jobDescription, initialSco
         return `v${maxV + 1}`;
     };
 
+    // DEBUG LOGGING
+    useEffect(() => {
+        console.log("Current Version State:", currentVersion);
+        console.log("All Versions:", versions);
+        console.log("Refinement Input:", refinementInput);
+        console.log("Download URL (PDF):", getDownloadUrl('pdf'));
+    }, [currentVersion, versions, refinementInput]); // varied dep array for debugging
+
     // Poll for refine job result
     const pollRefineJob = (jobId: string, versionId: string) => {
         const interval = setInterval(async () => {
@@ -416,65 +424,16 @@ export default function ResumePreview({ baseFilename, jobDescription, initialSco
                                     <Typography sx={{ mt: 2, color: 'text.secondary' }}>Generating Resume PDF...</Typography>
                                 </Box>
                             ) : (
-                                <iframe
+                                <embed
                                     key={currentVersion.filename}
-                                    src={getDownloadUrl('pdf') + "#toolbar=0&navpanes=0&scrollbar=0"}
-                                    title="Resume Preview"
+                                    src={`${getDownloadUrl('pdf')}&t=${currentVersion.status === 'completed' ? currentVersion.timestamp : Date.now()}#toolbar=0&navpanes=0&scrollbar=0`}
+                                    type="application/pdf"
                                     width="100%"
                                     height="100%"
                                     style={{ borderRadius: 8, border: 'none' }}
-                                >
-                                    <Box sx={{
-                                        height: '100%',
-                                        display: 'flex',
-                                        flexDirection: 'column',
-                                        alignItems: 'center',
-                                        justifyContent: 'center',
-                                        bgcolor: 'error.50',
-                                        p: 3,
-                                        textAlign: 'center'
-                                    }}>
-                                        <Typography variant="h6" color="error" gutterBottom>
-                                            Preview Unavailable
-                                        </Typography>
-                                        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                                            The PDF preview could not be loaded. Please download the file to view it.
-                                        </Typography>
+                                />
 
-                                        {currentVersion.error && (
-                                            <Paper
-                                                variant="outlined"
-                                                sx={{
-                                                    p: 2,
-                                                    bgcolor: 'grey.900',
-                                                    color: 'error.light',
-                                                    fontFamily: 'monospace',
-                                                    fontSize: '0.75rem',
-                                                    textAlign: 'left',
-                                                    width: '100%',
-                                                    maxHeight: 200,
-                                                    overflow: 'auto',
-                                                    mb: 2
-                                                }}
-                                            >
-                                                <pre style={{ margin: 0, whiteSpace: 'pre-wrap' }}>
-                                                    {currentVersion.error.slice(0, 500)}
-                                                    {currentVersion.error.length > 500 && "..."}
-                                                </pre>
-                                            </Paper>
-                                        )}
 
-                                        <Button
-                                            href={getDownloadUrl('pdf')}
-                                            target="_blank"
-                                            size="small"
-                                            variant="contained"
-                                            color="primary"
-                                        >
-                                            Download PDF
-                                        </Button>
-                                    </Box>
-                                </iframe>
                             )}
                         </Box>
                     )}
@@ -574,6 +533,6 @@ export default function ResumePreview({ baseFilename, jobDescription, initialSco
                     </Box>
                 </Paper>
             </Box>
-        </Paper>
+        </Paper >
     );
 }
