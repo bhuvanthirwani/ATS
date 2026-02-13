@@ -416,10 +416,10 @@ export default function ResumePreview({ baseFilename, jobDescription, initialSco
                                     <Typography sx={{ mt: 2, color: 'text.secondary' }}>Generating Resume PDF...</Typography>
                                 </Box>
                             ) : (
-                                <object
+                                <iframe
                                     key={currentVersion.filename}
-                                    data={getDownloadUrl('pdf') + "#toolbar=0&navpanes=0&scrollbar=0"}
-                                    type="application/pdf"
+                                    src={getDownloadUrl('pdf') + "#toolbar=0&navpanes=0&scrollbar=0"}
+                                    title="Resume Preview"
                                     width="100%"
                                     height="100%"
                                     style={{ borderRadius: 8, border: 'none' }}
@@ -435,10 +435,10 @@ export default function ResumePreview({ baseFilename, jobDescription, initialSco
                                         textAlign: 'center'
                                     }}>
                                         <Typography variant="h6" color="error" gutterBottom>
-                                            PDF Not Compiled
+                                            Preview Unavailable
                                         </Typography>
                                         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                                            Error in LaTeX Code. Please check the source or try regenerating.
+                                            The PDF preview could not be loaded. Please download the file to view it.
                                         </Typography>
 
                                         {currentVersion.error && (
@@ -465,15 +465,16 @@ export default function ResumePreview({ baseFilename, jobDescription, initialSco
                                         )}
 
                                         <Button
-                                            href={getDownloadUrl('log')}
+                                            href={getDownloadUrl('pdf')}
                                             target="_blank"
                                             size="small"
-                                            color="error"
+                                            variant="contained"
+                                            color="primary"
                                         >
-                                            View Compilation Log
+                                            Download PDF
                                         </Button>
                                     </Box>
-                                </object>
+                                </iframe>
                             )}
                         </Box>
                     )}

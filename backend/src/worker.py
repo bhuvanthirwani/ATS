@@ -208,7 +208,10 @@ def refine_resume_task(
             new_analysis = loop.run_until_complete(
                 llm_service.analyze_resume(config, refine_result.new_latex_code, job_description)
             )
-        except Exception:
+        except Exception as e:
+            print(f"[ERROR] Re-analysis failed: {e}")
+            import traceback
+            traceback.print_exc()
             new_analysis = None
 
         loop.close()

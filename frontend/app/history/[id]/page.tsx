@@ -197,7 +197,7 @@ export default function WorkflowDetailsPage() {
                         <ChatInterface
                             baseFilename={selectedJob.result_data?.compilation?.output_filename || workflow.template_filename.replace('.tex', '') + "_Optimized"}
                             jobDescription={workflow.job_description}
-                            initialScore={selectedJob.result_data.optimization?.final_score}
+                            initialScore={selectedJob.result_data.analysis?.ats_score || selectedJob.result_data.optimization?.final_score || 0}
                             initialWorkflowId={workflow.id}
                             initialError={undefined}
                             initialVersion={selectedJob.result_data?.version || "v1"}
