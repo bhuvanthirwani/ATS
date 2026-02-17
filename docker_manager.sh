@@ -33,6 +33,7 @@ show_menu() {
     echo "8) ⬇️  Pull from Docker Hub"
     echo "9) 🚪 Exit"
     echo "10) 🛠️  Run in Dev Mode (hot-reload)"
+    echo "11) 🔄 Rebuild & Restart (Recommended for Code Changes)"
     echo "======================================"
 }
 
@@ -68,7 +69,7 @@ execute_choice() {
             echo "♻️  Restarting..."
             compose_cmd down
             sleep 1
-            compose_cmd up -d
+            compose_cmd up
             ;;
         6|clean)
             echo "⚠️  WARNING: This will delete the database volume."
@@ -122,6 +123,12 @@ execute_choice() {
             cleanup_containers
             compose_cmd -f docker-compose.yml -f docker-compose.dev.yml up --build
             ;;
+        11|rebuild)
+            echo "🔄 Rebuilding and Restarting..."
+            cleanup_containers
+            compose_cmd up --build
+            echo "✅ Rebuild complete and services started."
+            ;;
         *)
             echo "❌ Invalid option."
             ;;
@@ -132,7 +139,7 @@ execute_choice() {
 if [ -z "$1" ]; then
     # Interactive mode
     show_menu
-    read -p "Select an option [1-7]: " choice
+    read -p "Select an option [1-11]: " choice
     execute_choice "$choice"
 else
     # CLI mode
