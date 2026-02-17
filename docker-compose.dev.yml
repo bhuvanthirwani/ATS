@@ -21,7 +21,7 @@ services:
     image: devhaxcodes/ats-worker:dev
     # Using watchmedo from watchdog (usually installed with celery[redis] or separately)
     # If not installed, we might default to just running worker without auto-reload
-    command: celery -A src.worker.celery_app worker --loglevel=info
+    command: python -m celery -A src.worker.celery_app worker --loglevel=info
     volumes:
       - ./backend:/app
     environment:
