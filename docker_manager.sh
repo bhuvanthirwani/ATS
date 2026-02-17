@@ -36,6 +36,14 @@ show_menu() {
     echo "======================================"
 }
 
+cleanup_containers() {
+    echo "🧹 Cleaning up existing containers..."
+    # Force remove known named containers to prevent conflicts
+    docker rm -f ats_core_backend ats_client_frontend ats_worker ats-redis-1 >/dev/null 2>&1
+    docker rm -f /ats_client_frontend /ats_core_backend /ats_worker >/dev/null 2>&1
+    compose_cmd down --remove-orphans
+}
+
 execute_choice() {
     case $1 in
         1|build)
@@ -44,6 +52,7 @@ execute_choice() {
             ;;
         2|up)
             echo "🚀 Starting services..."
+            cleanup_containers
             compose_cmd up
             echo "✅ Services started. Frontend at http://localhost:3000"
             ;;
@@ -110,11 +119,7 @@ execute_choice() {
             ;;
         10|dev)
             echo "🛠️  Starting in Dev Mode... (Cleaning up first)"
-            # Force remove known named containers to prevent conflicts
-            # We also try to remove by project name prefix just in case
-            docker rm -f ats_core_backend ats_client_frontend ats_worker ats-redis-1 >/dev/null 2>&1
-            docker rm -f /ats_client_frontend /ats_core_backend /ats_worker >/dev/null 2>&1
-            compose_cmd down --remove-orphans
+            cleanup_containers
             compose_cmd -f docker-compose.yml -f docker-compose.dev.yml up --build
             ;;
         *)
