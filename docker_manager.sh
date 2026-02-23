@@ -24,7 +24,7 @@ show_menu() {
     echo "   ATS Docker Management Script"
     echo "======================================"
     echo "1) 🏗️  Build Images (docker compose build)"
-    echo "2) 🚀 Run Containers (docker compose up -d)"
+    echo "2) 🚀 Run Containers (docker compose up)"
     echo "3) 🛑 Stop Containers (docker compose down)"
     echo "4) 📜 View Logs (docker compose logs -f)"
     echo "5) ♻️  Restart (down + up)"
