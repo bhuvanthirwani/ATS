@@ -24,6 +24,7 @@ class OptimizeRequest(BaseModel):
     analysis_result: dict
     output_filename: str
     ignored_keywords: list[str] = [] # Optional list of keywords to remove
+    manual_keywords: list[str] = [] # Optional list of keywords to add manually
 
 from typing import Optional
 
@@ -124,6 +125,7 @@ async def optimize_resume(
         analysis_result=req.analysis_result,
         output_filename=req.output_filename,
         ignored_keywords=req.ignored_keywords,
+        manual_keywords=req.manual_keywords,
         workflow_id=workflow.id # Pass DB ID
     )
     

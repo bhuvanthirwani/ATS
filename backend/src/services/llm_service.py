@@ -195,7 +195,8 @@ class LLMService:
         analysis: Dict, 
         resume_text: str, 
         jd_text: str,
-        ignored_keywords: list[str] = []
+        ignored_keywords: list[str] = [],
+        manual_keywords: list[str] = []
     ) -> OptimizationResult:
         import traceback
         import logging
@@ -208,6 +209,9 @@ class LLMService:
             # Filter missing keywords if any are ignored
             missing = analysis.get('missing_keywords', [])
             effective_missing = [k for k in missing if k not in ignored_keywords]
+            
+            # Combine suggested keywords with manual keywords
+            target_keywords = list(set(effective_missing + manual_keywords))
             
             optimize_prompt = user_config.get("prompts", {}).get("optimize_prompt", "")
             if not optimize_prompt:
@@ -250,14 +254,14 @@ class LLMService:
             # Safe replacement logic (Legacy Strategy)
             replacements = {
                 "{initial_ats_score}": str(analysis.get('ats_score', 0)),
-                "{missing_keywords}": ", ".join(effective_missing),
+                "{missing_keywords}": ", ".join(target_keywords),
                 "{matched_keywords}": ", ".join(analysis.get('matched_keywords', [])),
                 "{justification}": json.dumps(analysis.get('justification', {})),
                 "{job_description}": jd_text,
                 "{resume_text}": resume_text,
                 # Support double braces
                 "{{initial_ats_score}}": str(analysis.get('ats_score', 0)),
-                "{{missing_keywords}}": ", ".join(effective_missing),
+                "{{missing_keywords}}": ", ".join(target_keywords),
                 "{{matched_keywords}}": ", ".join(analysis.get('matched_keywords', [])),
                 "{{justification}}": json.dumps(analysis.get('justification', {})),
                 "{{job_description}}": jd_text,

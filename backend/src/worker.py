@@ -27,6 +27,7 @@ def optimize_resume_task(
     analysis_result: dict, 
     output_filename: str, 
     ignored_keywords: list[str],
+    manual_keywords: list[str],
     workflow_id: str # New Argument
 ):
     """
@@ -69,7 +70,8 @@ def optimize_resume_task(
                 analysis_result, 
                 resume_text, 
                 job_description,
-                ignored_keywords
+                ignored_keywords,
+                manual_keywords
             )
         )
         loop.close()

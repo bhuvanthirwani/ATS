@@ -33,6 +33,8 @@ export default function Dashboard() {
     const [selectedProfile, setSelectedProfile] = useState("");
     const [analysisResult, setAnalysisResult] = useState<any>(null);
     const [ignoredKeywords, setIgnoredKeywords] = useState<Set<string>>(new Set());
+    const [manualKeywords, setManualKeywords] = useState<string[]>([]);
+    const [newKeywordInput, setNewKeywordInput] = useState("");
 
     // Async Job State
     const [activeJobId, setActiveJobId] = useState<string | null>(null);
@@ -96,14 +98,15 @@ export default function Dashboard() {
     const [workflowId, setWorkflowId] = useState("");
 
     const optimizeMutation = useMutation({
-        mutationFn: async (variables: { ignored_keywords: string[] }) => {
+        mutationFn: async (variables: { ignored_keywords: string[], manual_keywords: string[] }) => {
             const res = await api.post("/actions/optimize", {
                 template_filename: selectedTemplate,
                 profile_filename: selectedProfile,
                 job_description: jobDescription,
                 analysis_result: analysisResult,
                 output_filename: customFilename,
-                ignored_keywords: variables.ignored_keywords || []
+                ignored_keywords: variables.ignored_keywords || [],
+                manual_keywords: variables.manual_keywords || []
             });
             return res.data;
         },
@@ -122,7 +125,10 @@ export default function Dashboard() {
     });
 
     const handleOptimization = () => {
-        optimizeMutation.mutate({ ignored_keywords: Array.from(ignoredKeywords) });
+        optimizeMutation.mutate({
+            ignored_keywords: Array.from(ignoredKeywords),
+            manual_keywords: manualKeywords
+        });
     };
 
     // Handle selecting a past job
@@ -146,6 +152,18 @@ export default function Dashboard() {
         if (newSet.has(keyword)) newSet.delete(keyword);
         else newSet.add(keyword);
         setIgnoredKeywords(newSet);
+    };
+
+    const addManualKeyword = () => {
+        if (!newKeywordInput.trim()) return;
+        if (!manualKeywords.includes(newKeywordInput.trim())) {
+            setManualKeywords([...manualKeywords, newKeywordInput.trim()]);
+        }
+        setNewKeywordInput("");
+    };
+
+    const removeManualKeyword = (keyword: string) => {
+        setManualKeywords(manualKeywords.filter(k => k !== keyword));
     };
 
     // calculate active step
@@ -298,6 +316,33 @@ export default function Dashboard() {
                                                     onDelete={ignoredKeywords.has(k) ? undefined : () => toggleKeyword(k)}
                                                     deleteIcon={ignoredKeywords.has(k) ? undefined : <span>×</span>}
                                                     sx={{ textDecoration: ignoredKeywords.has(k) ? 'line-through' : 'none' }}
+                                                />
+                                            ))}
+                                        </Box>
+                                    </Box>
+
+                                    <Divider sx={{ my: 2 }} />
+
+                                    <Box sx={{ mt: 2 }}>
+                                        <Typography variant="subtitle2" color="primary.main" fontWeight="bold">➕ Manual Keywords (Optional)</Typography>
+                                        <Box sx={{ display: 'flex', gap: 1, mt: 1, mb: 1 }}>
+                                            <TextField
+                                                size="small"
+                                                placeholder="Add keyword manually..."
+                                                value={newKeywordInput}
+                                                onChange={(e) => setNewKeywordInput(e.target.value)}
+                                                onKeyPress={(e) => e.key === 'Enter' && addManualKeyword()}
+                                                fullWidth
+                                            />
+                                            <Button variant="outlined" onClick={addManualKeyword}>Add</Button>
+                                        </Box>
+                                        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                                            {manualKeywords.map((k: string) => (
+                                                <Chip
+                                                    key={k}
+                                                    label={k}
+                                                    color="primary"
+                                                    onDelete={() => removeManualKeyword(k)}
                                                 />
                                             ))}
                                         </Box>
