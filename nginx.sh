@@ -20,6 +20,17 @@ fi
 DOMAIN="ats.haxcodes.dev"
 EMAIL="bhuvanthirwani2208usa@gmail.com"
 
+# Ensure Nginx is installed
+echo "📦 Ensuring Nginx is installed..."
+if ! command -v nginx &> /dev/null; then
+    apt-get update
+    apt-get install -y nginx
+fi
+
+# Ensure directories exist
+mkdir -p /etc/nginx/sites-available
+mkdir -p /etc/nginx/sites-enabled
+
 # Remove default if exists
 rm -f /etc/nginx/sites-enabled/default
 

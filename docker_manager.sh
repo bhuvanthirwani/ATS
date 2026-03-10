@@ -4,6 +4,18 @@
 # Usage: ./docker_manager.sh [command]
 # Commands: build, up, down, logs, restart, clean
 
+# Ensure we are in the directory of the script
+cd "$(dirname "$0")" || exit 1
+
+# Check if .env exists, if not, warn or create from example if it exists
+if [ ! -f .env ]; then
+    echo "⚠️  WARNING: .env file not found. Environment variables like OPENAI_API_KEY might be missing."
+    if [ -f .env.example ]; then
+        echo "📄 Creating .env from .env.example..."
+        cp .env.example .env
+    fi
+fi
+
 # Configuration
 DOCKER_USER="devhaxcodes"
 DOCKER_PASS="Docker@123"
