@@ -95,25 +95,13 @@ execute_choice() {
             echo "🔑 Logging into Docker Hub..."
             echo "$DOCKER_PASS" | docker login --username "$DOCKER_USER" --password-stdin
             
-            echo "🏷️  Tagging Images..."
-            # Get Image IDs from compose
-            BACKEND_ID=$(docker compose images -q backend)
-            FRONTEND_ID=$(docker compose images -q frontend)
+            echo "⬆️  Pushing Backend: $BACKEND_Image..."
+            docker push "$BACKEND_Image"
             
-            if [ -z "$BACKEND_ID" ] || [ -z "$FRONTEND_ID" ]; then
-                echo "❌ Could not find running images. Please build first (Option 1)."
-            else
-                docker tag "$BACKEND_ID" "$BACKEND_Image"
-                docker tag "$FRONTEND_ID" "$FRONTEND_Image"
-                
-                echo "⬆️  Pushing Backend: $BACKEND_Image..."
-                docker push "$BACKEND_Image"
-                
-                echo "⬆️  Pushing Frontend: $FRONTEND_Image..."
-                docker push "$FRONTEND_Image"
-                
-                echo "✅ Done!"
-            fi
+            echo "⬆️  Pushing Frontend: $FRONTEND_Image..."
+            docker push "$FRONTEND_Image"
+            
+            echo "✅ Done!"
             ;;
         8|pull)
             echo "🔑 Logging into Docker Hub..."

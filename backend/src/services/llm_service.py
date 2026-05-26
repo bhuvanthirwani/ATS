@@ -42,7 +42,7 @@ class RefineResult(BaseModel):
 
 class LLMService:
     def __init__(self):
-        self.catalog_path = pathlib.Path(__file__).parent.parent / "llms.json"
+        pass
 
     def _get_model_config(self, user_config: Dict):
         selected_id = user_config.get("selected_llm_id")
@@ -55,8 +55,9 @@ class LLMService:
              raise ValueError("Selected model not found in inventory")
              
         # Resolve from catalog
-        with open(self.catalog_path, "r") as f:
-            catalog = json.load(f)
+        from src.services.db_service import DatabaseService
+        db_service = DatabaseService()
+        catalog = db_service.get_llm_catalog()
             
         catalog_def = next((c for c in catalog if c["id"] == item["sdk_id"]), None)
         if not catalog_def:

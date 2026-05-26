@@ -1,0 +1,5 @@
+{
+    "postgres_url": "postgresql://postgres.ltwbsmypkqfzvitxdxvh:devhaxcodes_ats@aws-0-us-west-2.pooler.supabase.com:6543/postgres",
+    "jwt_secret": "devhaxcodes_ats",
+    "algorithm": "HS256"
+}

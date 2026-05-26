@@ -1,7 +1,8 @@
-version: '3.8'
-
 services:
   backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
     image: devhaxcodes/ats-backend:latest
     container_name: ats_core_backend
     volumes:
@@ -19,6 +20,9 @@ services:
       retries: 3
 
   frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
     image: devhaxcodes/ats-frontend:latest
     container_name: ats_client_frontend
     environment:
@@ -43,6 +47,9 @@ services:
     restart: unless-stopped
 
   worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
     image: devhaxcodes/ats-backend:latest
     container_name: ats_worker
     command: python -m celery -A src.worker.celery_app worker --loglevel=info

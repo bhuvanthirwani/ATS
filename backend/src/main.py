@@ -40,12 +40,15 @@ async def health_check():
 # Import Routers
 from src.api.v1.api import api_router
 from src.db.init_db import init_db
+from src.seed_llms import seed_llms
 
 # Init DB Tables on startup (Simple migration strategy)
 try:
     init_db()
+    # Seed the LLM catalog database table on startup
+    seed_llms()
 except Exception as e:
-    print(f"DB Init Failed (Might be expected if DB not ready): {e}")
+    print(f"DB Init / Seeding Failed: {e}")
 
 app.include_router(api_router, prefix="/api/v1")
 

@@ -197,20 +197,9 @@ old_resume_code (LaTeX): {resume_text}"""
         return db.update_config(user_id, new_config)
 
     def get_llm_catalog(self):
-        # llms.json lives alongside this service file's parent dir (src/llms.json)
-        # __file__ = src/services/file_service.py -> parent.parent = src/
-        catalog_path = pathlib.Path(__file__).parent.parent / "llms.json"
-
-        if not catalog_path.exists():
-            # Fallback: Docker /app/src/llms.json
-            catalog_path = pathlib.Path("/app/src/llms.json")
-
-        if not catalog_path.exists():
-            print(f"[ERROR] llms.json not found. Searched: {pathlib.Path(__file__).parent.parent / 'llms.json'}, /app/src/llms.json")
-            return []
-
-        with open(catalog_path, "r") as f:
-            return json.load(f)
+        from src.services.db_service import DatabaseService
+        db = DatabaseService()
+        return db.get_llm_catalog()
 
     def list_workflow_history(self, user_id: str) -> List[Dict]:
         """

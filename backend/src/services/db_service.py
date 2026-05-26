@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, Column, String, Integer, ForeignKey, JSON
+from sqlalchemy import create_engine, Column, String, Integer, ForeignKey, JSON, Boolean
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
 import os
@@ -8,12 +8,21 @@ import json
 
 # Database Setup
 def load_db_url():
+    # Try Docker path first
     config_path = pathlib.Path("/app/configs/development.json")
+    if not config_path.exists():
+        # Fallback to local path relative to this file's directory (backend/configs/development.json)
+        config_path = pathlib.Path(__file__).parent.parent.parent / "configs" / "development.json"
+        
     if config_path.exists():
         with open(config_path, "r") as f:
             config = json.load(f)
             return config.get("postgres_url")
-    return "sqlite:////app/data/ats.db" # Fallback
+            
+    # Try fallback SQLite in local directory instead of non-existent /app/data/ats.db
+    local_data_dir = pathlib.Path(__file__).parent.parent.parent / "data"
+    local_data_dir.mkdir(parents=True, exist_ok=True)
+    return f"sqlite:///{local_data_dir / 'ats.db'}"
 
 DB_PATH = load_db_url()
 
@@ -41,6 +50,18 @@ class LLMInventoryItem(Base):
     api_key = Column(String)
     plan_type = Column(String)
     
+class LLMModel(Base):
+    __tablename__ = "llms"
+
+    id = Column(String, primary_key=True, index=True)
+    provider = Column(String, nullable=False)
+    model_name = Column(String, nullable=False)
+    display_name = Column(String, nullable=False)
+    daily_token_limit = Column(Integer, default=1000000)
+    plans_supported = Column(JSON, default=["free", "paid"])
+    supports_tool_calling = Column(Boolean, default=True)
+    supports_structured_output = Column(Boolean, default=True)
+
 class DatabaseService:
     def __init__(self):
         Base.metadata.create_all(bind=engine)
@@ -184,3 +205,20 @@ old_resume_code (LaTeX): {resume_text}"""
 
         self.db.commit()
         return self.get_config(user_id)
+
+    def get_llm_catalog(self):
+        models = self.db.query(LLMModel).all()
+        return [
+            {
+                "id": m.id,
+                "provider": m.provider,
+                "model_name": m.model_name,
+                "display_name": m.display_name,
+                "daily_token_limit": m.daily_token_limit,
+                "plans_supported": m.plans_supported,
+                "supports_tool_calling": m.supports_tool_calling,
+                "supports_structured_output": m.supports_structured_output
+            }
+            for m in models
+        ]
+
